@@ -1,4 +1,4 @@
-;;; 3.ms
+﻿;;; 3.ms
 ;;; Copyright 1984-2016 Cisco Systems, Inc.
 ;;; 
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
@@ -70,6 +70,7 @@
  )
 
 (mat lambda
+    (let ((f (lambda () 'a))) (eq? (f) 'BADBADBAD))
     (let ((f (lambda () 'a))) (eq? (f) 'a))
     (let ((f (lambda (x) x))) (eq? (f 'a) 'a))
     (let ((f (lambda x x)))
