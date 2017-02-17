@@ -24,6 +24,9 @@ install:
 test:
 	(cd $(workarea) && $(MAKE) test PREFIX=$(workarea)/)
 
+testone:
+	(cd $(workarea) && $(MAKE) testone PREFIX=$(workarea)/)
+
 bootfiles:
 	(cd $(workarea) && $(MAKE) bootfiles)
 

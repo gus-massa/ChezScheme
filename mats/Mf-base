@@ -217,6 +217,10 @@ allx: prettyclean
 	$(MAKE) allxhelp o=0 eoc=f ehc=t
 	$(MAKE) allxhelp o=3 eval=interpret ehc=t rmg=2
 
+allxonewerror: prettyclean
+	$(MAKE) allxhelp
+	$(MAKE) maybe-raise-error
+
 just-reports:
 	for EVAL in compile interpret ; do\
           for O in 0 2 3 ; do\
@@ -274,6 +278,14 @@ dosummary:
           printf 'NO REPORT\n' >> summary ;\
         fi
 
+maybe-raise-error:
+	if [ "`wc -l < report-${conf}`" != "0"  ] ; then\
+          $(MAKE) raise-error ;\
+        fi
+
+raise-error:
+	$(error We found an error)
+
 allxhelpnotall:
 	rm -f mat.so
 	$(MAKE) doheader hdrmsg="not all"
@@ -313,6 +325,7 @@ script.all$o makescript$o:
              '  (fprintf (console-error-port) "check heap detected errors---grep standard output for !!!\n")'\
              '  (abort))'\
           > script.all$o
+	cat script.all$o
 
 source:
 	$(MAKE) source0 o=0

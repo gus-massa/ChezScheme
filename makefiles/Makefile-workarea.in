@@ -13,6 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+ifdef one_o
+  new_o = o=$(one_o)
+else
+  new_o = 
+endif
+ifdef one_cp0
+  new_cp0 = cp0=$(one_cp0)
+else
+  new_cp0 = 
+endif
+
 MAKEFLAGS += --no-print-directory
 PREFIX=
 
@@ -25,6 +36,10 @@ install: build
 
 test: build
 	(cd mats ; $(MAKE) allx)
+	@echo "test run complete.  check $(PREFIX)mats/summary for errors."
+
+testone: build
+	(cd mats ; $(MAKE) allxonewerror $(new_o) $(new_cp0))
 	@echo "test run complete.  check $(PREFIX)mats/summary for errors."
 
 bootfiles: build
