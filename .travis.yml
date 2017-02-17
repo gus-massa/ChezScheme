@@ -1,0 +1,56 @@
+sudo: false
+language: c
+
+matrix:
+  include:
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=0"
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=3"
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=0 one_cp0=t"
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=3 one_cp0=t"
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=0 spi=t rmg=2 p=t"
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=3 spi=t rmg=2 p=t"
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=0 eval=interpret"
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=3 eval=interpret"
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=0 eval=interpret one_cp0=t rmg=2"
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=3 eval=interpret one_cp0=t rmg=2"
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=0 eoc=f ehc=t"
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=3 eval=interpret ehc=t rmg=2"
+
+before_script:
+
+script:
+- ./configure
+# sudo make install
+- make build
+- make testone $CHEZ_TEST_ARGS
+
+after_script:
+
+notifications:
+  email:
+    on_success: never
+    on_failure: never
