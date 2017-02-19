@@ -5,6 +5,9 @@ matrix:
   include:
   - os: linux
     compiler: gcc
+    env: CHEZ_TEST_ARGS=""
+  - os: linux
+    compiler: gcc
     env: CHEZ_TEST_ARGS="one_o=0"
   - os: linux
     compiler: gcc
