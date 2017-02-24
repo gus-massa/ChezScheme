@@ -10,9 +10,3 @@
         (car (list (display 1) (display 2)))))
     "12")
   )
-
-(mat singleton
-  (not (eq?
-         (vector)
-         (make-vector (random 1))))
-  )
