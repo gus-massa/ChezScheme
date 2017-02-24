@@ -286,6 +286,7 @@ maybe-raise-error:
         fi
 
 raise-error:
+	cat report-${conf}
 	$(error We found an error)
 
 allxhelpnotall:
