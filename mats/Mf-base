@@ -106,9 +106,11 @@ defaulteoc = t
 eoc = $(defaulteoc)
 
 # set of mats to run
-mats = primvars 3 4 5_1 5_2 5_3 5_4 5_5 bytevector thread\
+old_mats = primvars 3 4 5_1 5_2 5_3 5_4 5_5 bytevector thread\
  misc cp0 5_6 5_7 5_8 6 io format 7 record hash enum 8 fx fl cfl foreign\
  ftype unix windows examples ieee date exceptions oop
+
+mats = noreorder
 
 Examples = ../examples
 

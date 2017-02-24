@@ -8,10 +8,22 @@ matrix:
     env: CHEZ_TEST_ARGS="one_o=0"
   - os: linux
     compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=2"
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=1"
+  - os: linux
+    compiler: gcc
     env: CHEZ_TEST_ARGS="one_o=3"
   - os: linux
     compiler: gcc
     env: CHEZ_TEST_ARGS="one_o=0 one_cp0=t"
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=1 one_cp0=t"
+  - os: linux
+    compiler: gcc
+    env: CHEZ_TEST_ARGS="one_o=2 one_cp0=t"
   - os: linux
     compiler: gcc
     env: CHEZ_TEST_ARGS="one_o=3 one_cp0=t"
