@@ -145,6 +145,7 @@
   (with-output-language (Lsrc Expr)
     (define void-rec `(quote ,(void)))
     (define true-rec `(quote #t))
+    (define true-rec2 `(quote #t))
     (define false-rec `(quote #f))
     (define null-rec `(quote ()))
     (define empty-vector-rec `(quote #()))
@@ -291,13 +292,14 @@
         (mutable pending)
         (mutable opending)
         (mutable value)
+        (mutable type)
         (mutable singly-referenced-score)
         (mutable lifted))
       (nongenerative)
       (protocol
         (lambda (new)
           (lambda (exp env wd moi)
-            (new exp env wd moi #f 0 0 0 #f #f #f)))))
+            (new exp env wd moi #f 0 0 0 #f #f #f #f)))))
 
     (define-record-type lifted
       (fields (immutable seq?) (immutable ids) (immutable vals))
@@ -554,15 +556,17 @@
                          (values (make-lifted #t x* e*) (build-ref x)))))))]
             [else (values #f e)]))
         (or (operand-value opnd)
-            (let ([sc (new-scorer)])
+            (let ([sc (new-scorer)]
+                  [tp (box #f)])
               (let ([e0 (pending-protect opnd
-                          (cp0 (operand-exp opnd) ctxt (operand-env opnd) sc (operand-wd opnd) (operand-name opnd) (operand-moi opnd)))])
+                          (cp0 (operand-exp opnd) ctxt (operand-env opnd) sc tp (operand-wd opnd) (operand-name opnd) (operand-moi opnd)))])
                 (let-values ([(e1 eprof) (extract-profile-forms e0)])
                   (with-values (split-value e1)
                     (lambda (lifted e)
                       (let ([e (if eprof (make-seq ctxt eprof e) e)])
                         (operand-lifted-set! opnd lifted)
                         (operand-value-set! opnd e)
+                        (operand-type-set! opnd (unbox tp))
                         (operand-score-set! opnd (scorer-score sc))
                         e)))))))))
 
@@ -1378,7 +1382,7 @@
             (letify lambda-preinfo ids ctxt (cp0 body (app-ctxt ctxt) env sc wd (app-name ctxt) moi))))))
 
     (define cp0-call
-      (lambda (preinfo e opnds ctxt env sc wd name moi)
+      (lambda (preinfo e opnds ctxt env sc tp wd name moi)
         (define (build-wrapper b* body)
           (if (null? b*)
               body
@@ -1391,7 +1395,7 @@
                           `(letrec* ([,ids ,vals] ...) ,body)
                           `(letrec ([,ids ,vals] ...) ,body)))))))
         (let* ((ctxt (make-app opnds ctxt 'call name preinfo))
-               (e (cp0 e ctxt env sc wd #f moi)))
+               (e (cp0 e ctxt env sc tp wd #f moi)))
           (build-wrapper (map operand-lifted opnds)
             (if (app-used ctxt)
                 (residualize-call-opnds (app-used ctxt) (app-unused ctxt) e (app-ctxt ctxt) sc)
@@ -1617,11 +1621,17 @@
                  (if (all-set? (prim-mask proc) (primref-flags pr))
                      true-rec
                      (residualize-ref maybe-src id sc))]
-                [else (fold-primref rhs ctxt sc wd name moi)])]
+                [else (fold-primref rhs ctxt sc (box #f) wd name moi)])]
             [else (residualize-ref maybe-src id sc)]))))
 
+    (define nanopass-quote->quote
+      (lambda (e)
+        (nanopass-case (Lsrc Expr) e
+          [(quote ,d) (list 'quote d)]
+          [else #f])))
+
     (define fold-primref
-      (lambda (pr ctxt sc wd name moi)
+      (lambda (pr ctxt sc tp wd name moi)
         (let ([opnds (app-opnds ctxt)] [outer-ctxt (app-ctxt ctxt)])
           (let ([flags (primref-flags pr)])
             (cond
@@ -1631,6 +1641,7 @@
                         (and (all-set? (prim-mask (or unrestricted discard)) flags)
                              (arity-okay? (primref-arity pr) (length opnds)))))
                 (residualize-seq '() opnds ctxt)
+                (set-box! tp (nanopass-quote->quote void-rec))
                 void-rec]
               [(and (eq? outer-ctxt 'test)
                     (all-set?
@@ -1639,16 +1650,64 @@
                           (prim-mask (or unrestricted discard true)))
                       flags))
                 (residualize-seq '() opnds ctxt)
+                (set-box! tp (nanopass-quote->quote true-rec))
                 true-rec]
               [(and (eq? outer-ctxt 'test)
                     (all-set? (prim-mask true) flags))
+                (set-box! tp (nanopass-quote->quote true-rec))
                 (make-seq outer-ctxt
-                  (fold-primref2 pr (primref-name pr) opnds flags ctxt sc wd name moi)
+                  (fold-primref2 pr (primref-name pr) opnds flags ctxt sc tp wd name moi)
                   true-rec)]
-              [else (fold-primref2 pr (primref-name pr) opnds flags ctxt sc wd name moi)])))))
+              [else (fold-primref2 pr (primref-name pr) opnds flags ctxt sc tp wd name moi)])))))
+
+    (define primref->pred
+      (lambda (pr)
+        (case (primref-name pr)
+          [(vector?) 'vector]
+          [(box?) 'box]
+          [(boolean?) 'boolean]
+          [else #f])))
+
+    (define primref->result-pred
+      (lambda (pr)
+        (let ([signatures (primref-signatures pr)])
+          (and (= (length signatures) 1)  ;TODO: Extend to multiple signatures
+               (let ([signature (car signatures)]) 
+                 (and (= (length (cdr signature)) 1)
+                      (let ([result (cadr signature)])
+                        (and (memq result '(vector box boolean))
+                             result))))))))
+
+    (define predicate-implies?
+      (lambda (x y)
+        (or (equal? x y)
+            (and (equal? y 'vector)
+                 (equal? x (nanopass-quote->quote empty-vector-rec)))
+            (and (equal? y 'boolean)
+                 (or (equal? x (nanopass-quote->quote true-rec))
+                     (equal? x (nanopass-quote->quote false-rec)))))))
+
+    (define predicate-implies-not?
+      (lambda (x y)
+        (cond
+          [(predicate-implies? x y) #f]
+          [(predicate-implies? y x) #f]
+          [else #t])))
+
+    (define reduce-predicate-app
+      (lambda (pred type)
+        (and pred
+             type
+             (cond
+               [(predicate-implies? type pred) true-rec]
+               [(predicate-implies-not? type pred) false-rec]
+               [else #f]))))
 
     (define fold-primref2
-      (lambda (pr sym opnds pflags ctxt sc wd name moi)
+      (lambda (pr sym opnds pflags ctxt sc tp wd name moi)
+        (let ([pred (primref->result-pred pr)])
+          (if pred
+             (set-box! tp pred)))
         (let ([handler (or (and (all-set? (prim-mask unsafe) pflags)
                                 (all-set? (prim-mask cp03) pflags)
                                 ($sgetprop sym 'cp03 #f))
@@ -1657,7 +1716,13 @@
           (or (and handler
                    (let ([level (if (all-set? (prim-mask unsafe) pflags) 3 2)])
                      (convention-case (app-convention ctxt)
-                       [(call) (handler level opnds ctxt sc wd name moi)]
+                       [(call) (let* ([e (handler level opnds ctxt sc tp wd name moi)]
+                                      [const (nanopass-quote->quote e)])
+                                 ; Register the type of the result in case the it's a constant
+                                 ; and the handler didn't.  
+                                 (if const
+                                     (set-box! tp const))
+                                 e)]
                        ; handler for apply will have turned the apply into a call if the last
                        ; argument is discovered to be a list.  nothing more we can do here.
                        [(apply2 apply3) #f])))
@@ -1667,6 +1732,16 @@
                         (let ([objs (objs-if-constant args)])
                           (and objs (guard (c [#t #f]) `(quote ,(apply ($top-level-value sym) objs)))))) =>
                    (lambda (e)
+                     (set-box! tp (nanopass-quote->quote e))
+                     (residualize-seq '() opnds ctxt)
+                     e)]
+                  [(and (convention-case (app-convention ctxt)
+                          [(call) #t]
+                          [(apply2 apply3) #f])
+                        (= (length opnds) 1)
+                        (reduce-predicate-app (primref->pred pr) (operand-type (car opnds)))) =>
+                   (lambda (e)
+                     (set-box! tp (nanopass-quote->quote e))
                      (residualize-seq '() opnds ctxt)
                      e)]
                   [else
@@ -1716,7 +1791,7 @@
              #'(_key lev (prim) clause ...))
             ((_key lev (prim ...) clause ...)
              (andmap identifier? #'(prim ...))
-             (with-implicit  (_key prim-name level ctxt sc wd name moi)
+             (with-implicit  (_key prim-name level ctxt sc tp wd name moi)
                (with-syntax
                  ((key (case (datum lev)
                          ((2) #'cp02)
@@ -1762,7 +1837,7 @@
                          (warningf #f "undeclared ~s handler for ~s~%" sym-key sym-name))))
                    (datum (prim ...)))
                  #'(let ((foo (lambda (prim-name)
-                                (lambda (level args ctxt sc wd name moi)
+                                (lambda (level args ctxt sc tp wd name moi)
                                   (let ((count (length args)))
                                     body)))))
                      ($sputprop 'prim 'key (foo 'prim)) ...)))))))
@@ -1996,7 +2071,7 @@
                                 (lambda (t opnd*) (cons (make-operand (build-ref t) env wd moi) opnd*))
                                 (map build-cooked-opnd e*)
                                 t*)
-                              (app-ctxt ctxt) env sc wd (app-name ctxt) moi)))))))]
+                              (app-ctxt ctxt) env sc (box #f) wd (app-name ctxt) moi)))))))]
                [(nanopass-case (Lsrc Expr) (result-exp (value-visit-operand! last-opnd))
                   [(call ,preinfo ,pr ,e1 ,e2) (guard (eq? (primref-name pr) 'cons)) (list e1 e2)]
                   [(call ,preinfo ,pr ,e ,e* ...) (guard (memq (primref-name pr) '(list* cons*))) (cons e e*)]
@@ -2017,7 +2092,7 @@
                                 (lambda (t opnd*) (cons (make-operand (build-ref t) env wd moi) opnd*))
                                 (map build-cooked-opnd e*)
                                 t*)
-                              (app-ctxt ctxt) env sc wd (app-name ctxt) moi)))))))]
+                              (app-ctxt ctxt) env sc (box #f) wd (app-name ctxt) moi)))))))]
                [else
                 (let ([temp (cp0-make-temp #f)]) ; N.B.: temp is singly referenced
                   (with-extended-env ((env ids) (empty-env (list temp) (list proc)))
@@ -2076,7 +2151,7 @@
                         (non-result-exp *p-val
                           (cp0-call (app-preinfo ctxt) (build-ref c-temp)
                             (map build-cooked-opnd args)
-                            (app-ctxt ctxt) env sc wd (app-name ctxt) moi))))]
+                            (app-ctxt ctxt) env sc (box #f) wd (app-name ctxt) moi))))]
                    [else
                      (call-with-values
                        (lambda ()
@@ -3618,7 +3693,7 @@
               [(ormap null-rec? (cons ?ls ?ls*))
                 (begin
                   (residualize-seq '() (list* ?p ?ls ?ls*) ctxt)
-                  null-rec)]
+                null-rec)]
               ; could treat map in effect context as for-each, but don't because (our)
               ; map is guaranteed (even at optimization level 3) not to get sick if an
               ; input list is mutated, while for-each is not.
@@ -4359,9 +4434,16 @@
                    ctxt empty-env sc wd name moi))]))
     ) ; with-output-language
 
-  (define-pass cp0 : Lsrc (ir ctxt env sc wd name moi) -> Lsrc ()
+  (define cp0
+    (case-lambda 
+      [(ir ctxt env sc wd name moi) (cp0x ir ctxt env sc (box #f) wd name moi)]
+      [(ir ctxt env sc tp wd name moi) (cp0x ir ctxt env sc tp wd name moi)]))
+  
+  (define-pass cp0x : Lsrc (ir ctxt env sc tp wd name moi) -> Lsrc ()
     (Expr : Expr (ir ctxt env sc wd name moi) -> Expr ()
-      [(quote ,d) ir]
+      [(quote ,d) 
+       (set! tp (nanopass-quote->quote ir))
+       ir]
       [(ref ,maybe-src ,x)
        (context-case ctxt
          [(effect) void-rec]
@@ -4426,8 +4508,8 @@
                              (residualize-ref maybe-src new-id sc)
                              (copy maybe-src new-id opnd ctxt sc wd name moi))])
                       (residualize-ref maybe-src new-id sc)))))])]
-      [(seq ,[cp0 : e1 'effect env sc wd #f moi -> e1] ,e2)
-       (make-seq ctxt e1 (cp0 e2 ctxt env sc wd name moi))]
+      [(seq ,[cp0 : e1 'effect env sc (box #f) wd #f moi -> e1] ,e2)
+       (make-seq ctxt e1 (cp0 e2 ctxt env sc tp wd name moi))]
       [(if ,[cp0 : e1 'test env sc wd #f moi -> e1] ,e2 ,e3)
        (nanopass-case (Lsrc Expr) (result-exp e1)
          [(quote ,d)
@@ -4481,7 +4563,7 @@
                                 xids xargs)])))]
                [else (values e args)])))
          (let-values ([(e args) (lift-let e e*)])
-           (cp0-call preinfo e (build-operands args env wd moi) ctxt env sc wd name moi)))]
+           (cp0-call preinfo e (build-operands args env wd moi) ctxt env sc tp wd name moi)))]
       [(case-lambda ,preinfo ,cl* ...)
        (when (symbol? name)
          (preinfo-lambda-name-set! preinfo
@@ -4553,7 +4635,7 @@
               (if (all-set? (prim-mask proc) (primref-flags pr))
                   true-rec
                   (begin (bump sc 1) pr))]
-             [(app) (fold-primref pr ctxt sc wd name moi)])]
+             [(app) (fold-primref pr ctxt sc tp wd name moi)])]
       [(foreign ,conv ,name ,e (,arg-type* ...) ,result-type)
        (context-case ctxt
          [(value app) (bump sc 1) `(foreign ,conv ,name ,(cp0 e 'value env sc wd #f moi) (,arg-type* ...) ,result-type)]
