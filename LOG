@@ -431,3 +431,5 @@
     root-experr*
 - added entry for record-type-equal-procedure and friends
     release_notes.stex
+- added `signatures` field to primref record
+    primref.ss primvars.ss
