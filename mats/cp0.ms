@@ -2828,3 +2828,28 @@
         `(lambda (x) (= x x))) ; x could be +nan.0
       `(lambda (x) (($primitive ,(if (fx= (optimize-level) 3) 3 2) =) x x))))
 )
+
+(mat type-predicates
+  ; reduce some (direct) cases of predicte aplications.
+  (equivalent-expansion?
+    (parameterize ([#%$suppress-primitive-inlining #f] [enable-cp0 #t] [optimize-level (max (optimize-level) 2)])
+      (expand/optimize
+        '(vector? (vector 1 2 3))))
+    '#t)
+  (equivalent-expansion?
+    (parameterize ([#%$suppress-primitive-inlining #f] [enable-cp0 #t] [optimize-level (max (optimize-level) 2)])
+      (expand/optimize
+        '(vector? (box 7))))
+    '#f)
+  (equivalent-expansion?
+    (parameterize ([#%$suppress-primitive-inlining #f] [enable-cp0 #t] [optimize-level (max (optimize-level) 2)])
+      (expand/optimize
+        '(box? (vector 1 2 3))))
+    '#f)
+  (equivalent-expansion?
+    (parameterize ([#%$suppress-primitive-inlining #f] [enable-cp0 #t] [optimize-level (max (optimize-level) 2)])
+      (expand/optimize
+        '(box? (box 7))))
+    '#t)
+)
+ 
