@@ -654,7 +654,8 @@
                            (let ([x ((run-cp0)
                                      (lambda (x)
                                        (set! cpletrec-ran? #t)
-                                       (let ([x ($pass-time 'cp0 (lambda () ($cp0 x #f)))])
+                                       (let* ([x ($pass-time 'cp0 (lambda () ($cp0 x #f)))]
+                                              [x ($pass-time 'cptypes (lambda () ($cptypes x)))])
                                          ($pass-time 'cpletrec
                                            (lambda () ($cpletrec x)))))
                                      x2)])
