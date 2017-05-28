@@ -30,4 +30,7 @@
   (cptypes-equivalent-expansion?
     '(vector? (vector))  ;actually reduced by folding, not cptypes 
     #t)
+  (cptypes-equivalent-expansion?
+    '(vector? (vector 1 2 3)) 
+    #t)
 )
