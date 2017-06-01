@@ -64,31 +64,102 @@ Notes:
             (make-seq ctxt (car e*) (make-seq* ctxt (cdr e*))))))
   )
 
-  (define-pass cptypes : Lsrc (ir ret) -> Lsrc ()
+  (define-pass cptypes : Lsrc (ir ret types) -> Lsrc ()
     (Expr : Expr (ir) -> Expr ()
       [(quote ,d) (when (number? d) (display (list d))) ir]
+      [(ref ,maybe-src ,x)
+       (guard (not (prelex-was-assigned x)))
+       (let ([a (assoc x (unbox types))])
+         (when a
+           (set-box! ret (cdr a))))
+       ir]
       [(call ,preinfo ,pr ,e* ...)
        (let* ([r* (map (lambda (e) (box #f)) e*)]
-              [e* (map cptypes e* r*)])
+              [t* (map (lambda (e) (box (unbox types))) e*)]
+              [e* (map cptypes e* r* t*)])
          (cond
-           [(and (fx= (length e*) 1)
-                 (eq? (primref-name pr) 'vector?)
-                 (eq? (unbox (car r*)) 'vector?))
-            (set-box! ret true-rec)
-            (make-seq 'value/probably (car e*) true-rec)]
-           [(eq? (primref-name pr) 'vector)
-            (set-box! ret 'vector?)
-            `(call ,preinfo ,pr ,e* ...)]
+           [(cond
+              [(and (fx= (length e*) 1)
+                    (eq? (primref-name pr) 'vector?)
+                    (eq? (unbox (car r*)) 'vector?))
+               (set-box! ret true-rec)
+               (set-box! types (unbox (car t*)))
+               (make-seq 'value/probably (car e*) true-rec)]
+              [(and (fx= (length e*) 1)
+                    (eq? (primref-name pr) 'vector-length))
+               (set-box! ret 'fixnum?)
+               (nanopass-case (Lsrc Expr) (car e*)
+                 [(ref ,maybe-src ,x)
+                  (guard (not (prelex-was-assigned x)))
+                  (when (not (assoc x (unbox types)))
+                    (set-box! types (cons (cons x 'vector?) (unbox types))))]
+                 [else
+                  (void)])
+               #f]
+              [(eq? (primref-name pr) 'vector)
+               (set-box! ret 'vector?)
+               #f]
+              [else
+                #f])]
            [else
+            (for-each (lambda (t)
+                        (for-each (lambda (a)
+                                    (when (not (assoc (car a) (unbox types)))
+                                      (set-box! types (cons a (unbox types)))))
+                                  (unbox t)))
+                      t*)
             `(call ,preinfo ,pr ,e* ...)]))]
       [(call ,preinfo ,e0 ,e* ...)
        (let* ([r0 (box #f)]
-              [e0 (cptypes e0 r0)]
+              [t0 (box (unbox types))]
+              [e0 (cptypes e0 r0 t0)]
               [r* (map (lambda (e) (box #f)) e*)]
-              [e* (map cptypes e* r*)])
+              [t* (map (lambda (e) (box (unbox types))) e*)]
+              [e* (map cptypes e* r* t*)])
+         (set-box! types (unbox t0))
+         (for-each (lambda (t)
+                     (for-each (lambda (a)
+                                 (when (not (assoc (car a) (unbox types)))
+                                   (set-box! types (cons a (unbox types)))))
+                               (unbox t)))
+                   t*)
          `(call ,preinfo ,e0 ,e* ...))]
+      [(seq ,e1 ,e2)
+       (let* ([e1 (cptypes e1 (box #f) types)]
+              [e2 (cptypes e2 ret types)])
+         (make-seq 'value/probably e1 e2))]
+      [(if ,e1 ,e2 ,e3)
+       (let* ([e1 (cptypes e1 (box #f) types)]
+              [e2 (cptypes e2 (box #f) (box '()))]
+              [e3 (cptypes e3 (box #f) (box '()))])
+         `(if ,e1 ,e2 ,e3))]
+      [(case-lambda ,preinfo ,cl* ...)
+       (let ([cl* (map (lambda (cl)
+                         (nanopass-case (Lsrc CaseLambdaClause) cl
+                           [(clause (,x* ...) ,interface ,body)
+                            (let ([body (cptypes body (box #f) (box '()))])
+                              (with-output-language (Lsrc CaseLambdaClause)
+                                `(clause (,x* ...) ,interface ,body)))]))
+                       cl*)])
+         `(case-lambda ,preinfo ,cl* ...))]
+      [(letrec ([,x* ,e*] ...) ,body)
+       (let* ([r* (map (lambda (e) (box #f)) e*)]
+              [t* (map (lambda (e) (box (unbox types))) e*)]
+              [e* (map (lambda (e r t) (cptypes e r t)) e* r* t*)]
+              [body (cptypes body ret types)])
+         `(letrec ([,x* ,e*] ...) ,body))]
+      [(letrec* ([,x* ,e*] ...) ,body)
+       (let* ([r* (map (lambda (e) (box #f)) e*)]
+              [e* (map (lambda (e r) (cptypes e r types)) e* r*)]
+              [body (cptypes body ret types)])
+         `(letrec* ([,x* ,e*] ...) ,body))]
+      [(immutable-list (,e* ...) ,e)
+       (let* ([t* (map (lambda (e) (box (unbox types))) e*)]
+              [e* (map (lambda (e t) (cptypes e (box #f) t)) e* t*)]
+              [e (cptypes e ret types)]) #;CHECK
+         `(immutable-list (,e*  ...) ,e))]
       #;[else ir]))
 
 (lambda (x)
-  (cptypes x (box #f)))
+  (cptypes x (box #f) (box '())))
 ))
