@@ -110,6 +110,43 @@ Notes:
          (let ([a (assoc x (unbox types))])
            (and a (cdr a)))))
 
+  (define (predicates-add/ref! types r pred)
+    (nanopass-case (Lsrc Expr) r
+      [(ref ,maybe-src ,x)
+       (predicates-add! types x pred)]
+      [else
+       (void)]))
+
+  (define (check-constant-is? x pred?)
+    (nanopass-case (Lsrc Expr) x
+      [(quote ,d) (pred? d)]
+      [else #f]))
+
+  (define (check-predicate-implies? x y)
+    (and x
+         y
+         (or (eq? x y)
+             (and (Lsrc? x)
+                  (Lsrc? y)
+                 (nanopass-case (Lsrc Expr) x
+                   [(quote ,d1) 
+                    (nanopass-case (Lsrc Expr) y
+                      [(quote ,d2) (eq? d1 d2)] #;CHECK ;eq?/eqv?/equal?
+                      [else #f])]
+                   [else #f]))
+             (cond
+               [(eq? y 'vector?) (check-constant-is? x vector?)] 
+               [(eq? y 'box?) (check-constant-is? x box?)] 
+               [(eq? y 'number?) (check-constant-is? x number?)]
+               [else #f]))))
+
+  (define (check-predicate-implies-not? x y)
+    ; for now this is enough
+    (and x
+         y
+         (not (check-predicate-implies? x y))
+         (not (check-predicate-implies? y x))))
+
   (define-pass cptypes : Lsrc (ir ctxt ret types) -> Lsrc ()
     (Expr : Expr (ir) -> Expr ()
       [(quote ,d)
@@ -118,8 +155,22 @@ Notes:
         (set-box! ret ir)
         ir]
       [(ref ,maybe-src ,x)
-       (set-box! ret (predicates-lookup types x))
-       ir]
+       (context-case ctxt
+         [(test)
+          (let ([t (predicates-lookup types x)])
+            (cond
+              [(check-predicate-implies-not? t false-rec) 
+               (set-box! ret true-rec)
+               true-rec]
+              [(check-predicate-implies? t false-rec) 
+               (set-box! ret false-rec)
+                false-rec]
+              [else
+               (set-box! ret t)
+               ir]))]
+         [else
+          (set-box! ret (predicates-lookup types x))
+          ir])]
       [(seq ,[cptypes : e1 'effect (box #f) types -> e1] ,[cptypes : e2 ctxt ret types -> e2])
        (make-seq ctxt e1 e2)]
       [(if ,e1 ,e2 ,e3)
@@ -133,32 +184,39 @@ Notes:
       [(call ,preinfo ,pr ,e* ...)
        (let* ([r* (map (lambda (e) (box #f)) e*)]
               [t* (map (lambda (e) (predicates-copy types)) e*)]
-              [e* (map (lambda (e r t) (cptypes e 'value r t)) e* r* t*)])
+              [e* (map (lambda (e r t) (cptypes e 'value r t)) e* r* t*)]
+              [ir `(call ,preinfo ,pr ,e* ...)])
+         (for-each (lambda (t) (predicates-merge! types t '())) t*)
          (cond
-           [(cond
-              [(and (fx= (length e*) 1)
-                    (eq? (primref-name pr) 'vector?)
-                    (eq? (unbox (car r*)) 'vector?))
-               (set-box! ret true-rec)
-               (predicates-merge! types (car t*) '())
-               (make-seq 'value/probably (car e*) true-rec)]
-              [(and (fx= (length e*) 1)
-                    (eq? (primref-name pr) 'vector-length))
-               (set-box! ret 'fixnum?)
-               (nanopass-case (Lsrc Expr) (car e*)
-                 [(ref ,maybe-src ,x)
-                  (predicates-add! types x 'vector?)]
-                 [else
-                  (void)])
-               #f]
-              [(eq? (primref-name pr) 'vector)
-               (set-box! ret 'vector?)
-               #f]
-              [else
-                #f])]
+           [(and (fx= (length e*) 1)
+                 (memq (primref-name pr) '(vector? box? number?)))
+            (let ([pred (primref-name pr)]
+                  [var (unbox (car r*))])
+              (cond
+                [(check-predicate-implies? var pred) 
+                 (set-box! ret true-rec)
+                 (make-seq ctxt (car e*) true-rec)]
+                [(check-predicate-implies-not? var pred) 
+                 (set-box! ret false-rec)
+                 (make-seq ctxt (car e*) false-rec)]
+                [else ir]))]
+           [(and (fx= (length e*) 1)
+                 (eq? (primref-name pr) 'vector-length))
+            (set-box! ret 'number?)
+            (predicates-add/ref! types (car e*) 'vector?)
+            ir]
+           [(and (fx= (length e*) 1)
+                 (eq? (primref-name pr) 'unbox))
+            (predicates-add/ref! types (car e*) 'box?)
+            ir]
+           [(eq? (primref-name pr) 'vector)
+            (set-box! ret 'vector?)
+            ir]
+           [(eq? (primref-name pr) 'box)
+            (set-box! ret 'box?)
+            ir]
            [else
-            (for-each (lambda (t) (predicates-merge! types t '())) t*)
-            `(call ,preinfo ,pr ,e* ...)]))]
+            ir]))]
       [(case-lambda ,preinfo ,cl* ...)
        (let* ([r* (map (lambda (cl) (box #f)) cl*)]
               [t* (map (lambda (cl) (predicates-copy types)) cl*)]

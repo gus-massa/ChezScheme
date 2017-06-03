@@ -34,8 +34,20 @@
     '(vector? (vector 1 2 3)) 
     #t)
   (cptypes-equivalent-expansion?
+    '(vector? (box 1)) 
+    #f)
+  (cptypes-equivalent-expansion?
+    '(box? (vector 1 2 3)) 
+    #f)
+  (cptypes-equivalent-expansion?
+    '(box? (box 1)) 
+    #t)
+  (cptypes-equivalent-expansion?
     '(lambda (x) (vector-length x) (vector? x))
     '(lambda (x) (vector-length x) #t))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (vector-length x) (box? x))
+    '(lambda (x) (vector-length x) #f))
   (cptypes-equivalent-expansion?
     '(lambda (x) (if (zero? (vector-length x)) (newline) (void)) (vector? x))
     '(lambda (x) (if (zero? (vector-length x)) (newline) (void)) #t))
@@ -45,6 +57,9 @@
   (not (cptypes-equivalent-expansion?
          '(lambda (x) (if (zero? (random 2)) (void) (vector-length x)) (vector? x))
          '(lambda (x) (if (zero? (random 2)) (void) (vector-length x)) #t)))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (vector-length x) (if x (newline) (void)))
+    '(lambda (x) (vector-length x) (if #t (newline) (void))))
   (cptypes-equivalent-expansion?
     '(lambda (x) (vector-length x) (if (vector? x) (newline) (void)))
     '(lambda (x) (vector-length x) (if #t (newline) (void))))
