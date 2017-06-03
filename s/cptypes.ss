@@ -25,6 +25,7 @@ Notes:
   (include "base-lang.ss")
 
   (with-output-language (Lsrc Expr)
+    (define void-rec `(quote ,(void)))
     (define true-rec `(quote #t))
     (define false-rec `(quote #f))
 
@@ -68,11 +69,21 @@ Notes:
     (Expr : Expr (ir) -> Expr ()
       [(quote ,d) (when (number? d) (display (list d))) ir]
       [(ref ,maybe-src ,x)
-       (guard (not (prelex-was-assigned x)))
-       (let ([a (assoc x (unbox types))])
-         (when a
-           (set-box! ret (cdr a))))
+       (when (not (prelex-was-assigned x))
+         (let ([a (assoc x (unbox types))])
+           (when a
+             (set-box! ret (cdr a)))))
        ir]
+      [(seq ,[cptypes : e1 (box #f) types -> e1] ,[cptypes : e2 (box #f) types -> e2])
+       (make-seq 'value/probably e1 e2)]
+      [(if ,e1 ,e2 ,e3)
+       (let* ([e1 (cptypes e1 (box #f) types)]
+              [e2 (cptypes e2 (box #f) (box (unbox types)))]
+              [e3 (cptypes e3 (box #f) (box (unbox types)))])
+         `(if ,e1 ,e2 ,e3))]
+      [(set! ,maybe-src ,x ,[cptypes : e (box #f) types -> e])
+       (set-box! ret void-rec)
+       `(set! ,maybe-src ,x ,e)]
       [(call ,preinfo ,pr ,e* ...)
        (let* ([r* (map (lambda (e) (box #f)) e*)]
               [t* (map (lambda (e) (box (unbox types))) e*)]
@@ -109,6 +120,15 @@ Notes:
                                   (unbox t)))
                       t*)
             `(call ,preinfo ,pr ,e* ...)]))]
+      [(case-lambda ,preinfo ,cl* ...)
+       (let ([cl* (map (lambda (cl)
+                         (nanopass-case (Lsrc CaseLambdaClause) cl
+                           [(clause (,x* ...) ,interface ,body)
+                            (let ([body (cptypes body (box #f) (box (unbox types)))])
+                              (with-output-language (Lsrc CaseLambdaClause)
+                                `(clause (,x* ...) ,interface ,body)))]))
+                       cl*)])
+         `(case-lambda ,preinfo ,cl* ...))]
       [(call ,preinfo ,e0 ,e* ...)
        (let* ([r0 (box #f)]
               [t0 (box (unbox types))]
@@ -124,24 +144,6 @@ Notes:
                                (unbox t)))
                    t*)
          `(call ,preinfo ,e0 ,e* ...))]
-      [(seq ,e1 ,e2)
-       (let* ([e1 (cptypes e1 (box #f) types)]
-              [e2 (cptypes e2 ret types)])
-         (make-seq 'value/probably e1 e2))]
-      [(if ,e1 ,e2 ,e3)
-       (let* ([e1 (cptypes e1 (box #f) types)]
-              [e2 (cptypes e2 (box #f) (box '()))]
-              [e3 (cptypes e3 (box #f) (box '()))])
-         `(if ,e1 ,e2 ,e3))]
-      [(case-lambda ,preinfo ,cl* ...)
-       (let ([cl* (map (lambda (cl)
-                         (nanopass-case (Lsrc CaseLambdaClause) cl
-                           [(clause (,x* ...) ,interface ,body)
-                            (let ([body (cptypes body (box #f) (box '()))])
-                              (with-output-language (Lsrc CaseLambdaClause)
-                                `(clause (,x* ...) ,interface ,body)))]))
-                       cl*)])
-         `(case-lambda ,preinfo ,cl* ...))]
       [(letrec ([,x* ,e*] ...) ,body)
        (let* ([r* (map (lambda (e) (box #f)) e*)]
               [t* (map (lambda (e) (box (unbox types))) e*)]
@@ -153,11 +155,42 @@ Notes:
               [e* (map (lambda (e r) (cptypes e r types)) e* r*)]
               [body (cptypes body ret types)])
          `(letrec* ([,x* ,e*] ...) ,body))]
+      [,pr ir]
+      [(foreign ,conv ,name ,[cptypes : e (box #f) types -> e] (,arg-type* ...) ,result-type)
+       `(foreign ,conv ,name ,e (,arg-type* ...) ,result-type)]
+      [(fcallable ,conv ,[cptypes : e (box #f) types -> e] (,arg-type* ...) ,result-type)
+       `(fcallable ,conv ,e (,arg-type* ...) ,result-type)]
+      [(record ,rtd ,rtd-expr ,e* ...)
+       (let* ([t-rtd-expr (box (unbox types))]
+              [rtd-expr (cptypes rtd-expr (box #f) t-rtd-expr)]
+              [t* (map (lambda (e) (box (unbox types))) e*)]
+              [e* (map (lambda (e t) (cptypes e (box #f) t)) e* t*)])
+         (set-box! types (unbox t-rtd-expr))
+         `(record ,rtd ,rtd-expr ,e* ...))]
+      [(record-ref ,rtd ,type ,index ,[cptypes : e (box #f) types -> e])
+       `(record-ref ,rtd ,type ,index ,e)]
+      [(record-set! ,rtd ,type ,index ,e1 , e2) ;can be reordered?
+       (let* ([t1 (box (unbox types))]
+              [t2 (box (unbox types))]
+              [e1 (cptypes e1 (box #f) t1)]
+              [e2 (cptypes e2 (box #f) t2)])
+       `(record-set! ,rtd ,type ,index ,e1 ,e2))]
+      [(record-type ,rtd ,[cptypes : e (box #f) types -> e])
+       `(record-type ,rtd ,e)]
+      [(record-cd ,rcd ,rtd-expr ,[cptypes : e (box #f) types -> e])
+       `(record-cd ,rcd ,rtd-expr ,e)]
       [(immutable-list (,e* ...) ,e)
        (let* ([t* (map (lambda (e) (box (unbox types))) e*)]
               [e* (map (lambda (e t) (cptypes e (box #f) t)) e* t*)]
               [e (cptypes e ret types)]) #;CHECK
          `(immutable-list (,e*  ...) ,e))]
+      [(moi) ir]
+      [(pariah) ir]
+      [(cte-optimization-loc ,box0 ,[cptypes : e (box #f) types -> e]) ;don't shadow box
+       `(cte-optimization-loc ,box0 ,e)]
+      [(cpvalid-defer ,e) (sorry! who "cpvalid leaked a cpvalid-defer form ~s" ir)]
+      [(profile ,src) ir]
+      [else ($oops who "unrecognized record ~s" ir)]
       #;[else ir]))
 
 (lambda (x)

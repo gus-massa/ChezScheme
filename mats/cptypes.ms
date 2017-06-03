@@ -45,4 +45,19 @@
   (not (cptypes-equivalent-expansion?
          '(lambda (x) (if (zero? (random 2)) (void) (vector-length x)) (vector? x))
          '(lambda (x) (if (zero? (random 2)) (void) (vector-length x)) #t)))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (vector-length x) (if (vector? x) (newline) (void)))
+    '(lambda (x) (vector-length x) (if #t (newline) (void))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (vector-length x) (if (zero? (random 2)) (vector? x) (void)))
+    '(lambda (x) (vector-length x) (if (zero? (random 2)) #t (void))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (vector-length x) (if (zero? (random 2)) (void) (vector? x)))
+    '(lambda (x) (vector-length x) (if (zero? (random 2)) (void) #t)))
+  (cptypes-equivalent-expansion?
+    '(lambda (x y) (vector-length x) (set! y (vector? x)))
+    '(lambda (x y) (vector-length x) (set! y #t)))
+  (cptypes-equivalent-expansion?
+    '(lambda (x y) (set! y (vector-length x)) (vector? x))
+    '(lambda (x y) (set! y (vector-length x)) #t))
 )
