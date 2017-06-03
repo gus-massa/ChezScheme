@@ -60,4 +60,38 @@
   (cptypes-equivalent-expansion?
     '(lambda (x y) (set! y (vector-length x)) (vector? x))
     '(lambda (x y) (set! y (vector-length x)) #t))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (vector-length x) (let ([y (random 7)]) (list (vector? x) y y)))
+    '(lambda (x) (vector-length x) (let ([y (random 7)]) (list #t y y))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (vector-length x) (let ([y (vector? x)]) (list (random 7) y y)))
+    '(lambda (x) (vector-length x) (let ([y #t]) (list (random 7) y y))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (let ([y (vector-length x)]) (list (vector? x) y y)))
+    '(lambda (x) (let ([y (vector-length x)]) (list #t y y))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (let ([y (vector-length x)])
+                   (let ([z (vector? x)])
+                     (list y y z z))))
+    '(lambda (x) (let ([y (vector-length x)])
+                   (let ([z #t])
+                     (list y y z z)))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (let ([y (vector-length x)]) (display (list y y))) (vector? x))
+    '(lambda (x) (let ([y (vector-length x)]) (display (list y y))) #t))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (let ([y (random 7)]) (display (list (vector-length x) y y))) (vector? x))
+    '(lambda (x) (let ([y (random 7)]) (display (list (vector-length x) y y))) #t))
+  (cptypes-equivalent-expansion?
+    '(let ([y (vector 1 2 3)]) (display (list (vector? y) y y)))
+    '(let ([y (vector 1 2 3)]) (display (list #t y y))))
+  (cptypes-equivalent-expansion?
+    '(let ([y (vector 1 2 3)]) (display (list y y)) (vector? y))
+    '(let ([y (vector 1 2 3)]) (display (list y y)) #t))
+  (cptypes-equivalent-expansion?
+    '(vector? (let ([y (vector 1 2 3)]) (display (list y y)) y))
+    '(begin (let ([y (vector 1 2 3)]) (display (list y y)) y) #t))
+  (cptypes-equivalent-expansion?
+    '(vector? (let ([y (vector 1 2 3)]) (display (list y y)) (vector 4 5 6)))
+    '(begin (let ([y (vector 1 2 3)]) (display (list y y)) (vector 4 5 6)) #t))
 )

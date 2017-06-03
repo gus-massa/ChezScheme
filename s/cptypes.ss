@@ -24,6 +24,25 @@ Notes:
   (import (nanopass))
   (include "base-lang.ss")
 
+  (define-syntax context-case
+    (lambda (x)
+      (define predicate
+        (lambda (type)
+          (syntax-case type (app)
+            [app #'app?]
+            [_ (with-syntax ([type type])
+                 #'(lambda (x) (eq? x 'type)))])))
+      (syntax-case x (else)
+        [(_ ctxt-exp [(type ...) e1 e2 ...] more ...)
+         (with-syntax (((pred ...) (map predicate #'(type ...))))
+           #'(let ((ctxt ctxt-exp))
+               (if (or (pred ctxt) ...)
+                   (begin e1 e2 ...)
+                   (context-case ctxt more ...))))]
+        [(_ ctxt-exp [else e1 e2 ...]) #'(begin e1 e2 ...)]
+        [(_ ctxt-exp)
+         #'($oops 'cptypes-internal "unexpected context ~s" ctxt-exp)])))
+
   (with-output-language (Lsrc Expr)
     (define void-rec `(quote ,(void)))
     (define true-rec `(quote #t))
@@ -91,26 +110,30 @@ Notes:
          (let ([a (assoc x (unbox types))])
            (and a (cdr a)))))
 
-  (define-pass cptypes : Lsrc (ir ret types) -> Lsrc ()
+  (define-pass cptypes : Lsrc (ir ctxt ret types) -> Lsrc ()
     (Expr : Expr (ir) -> Expr ()
-      [(quote ,d) (when (number? d) (display (list d))) ir]
+      [(quote ,d)
+       (when (number? d)
+        (display (list d)))
+        (set-box! ret ir)
+        ir]
       [(ref ,maybe-src ,x)
        (set-box! ret (predicates-lookup types x))
        ir]
-      [(seq ,[cptypes : e1 (box #f) types -> e1] ,[cptypes : e2 (box #f) types -> e2])
-       (make-seq 'value/probably e1 e2)]
+      [(seq ,[cptypes : e1 'effect (box #f) types -> e1] ,[cptypes : e2 ctxt ret types -> e2])
+       (make-seq ctxt e1 e2)]
       [(if ,e1 ,e2 ,e3)
-       (let* ([e1 (cptypes e1 (box #f) types)]
-              [e2 (cptypes e2 (box #f) (predicates-copy types))]
-              [e3 (cptypes e3 (box #f) (predicates-copy types))])
+       (let* ([e1 (cptypes e1 'test (box #f) types)]
+              [e2 (cptypes e2 ctxt (box #f) (predicates-copy types))]
+              [e3 (cptypes e3 ctxt (box #f) (predicates-copy types))])
          `(if ,e1 ,e2 ,e3))]
-      [(set! ,maybe-src ,x ,[cptypes : e (box #f) types -> e])
+      [(set! ,maybe-src ,x ,[cptypes : e 'value (box #f) types -> e])
        (set-box! ret void-rec)
        `(set! ,maybe-src ,x ,e)]
       [(call ,preinfo ,pr ,e* ...)
        (let* ([r* (map (lambda (e) (box #f)) e*)]
               [t* (map (lambda (e) (predicates-copy types)) e*)]
-              [e* (map cptypes e* r* t*)])
+              [e* (map (lambda (e r t) (cptypes e 'value r t)) e* r* t*)])
          (cond
            [(cond
               [(and (fx= (length e*) 1)
@@ -137,71 +160,99 @@ Notes:
             (for-each (lambda (t) (predicates-merge! types t '())) t*)
             `(call ,preinfo ,pr ,e* ...)]))]
       [(case-lambda ,preinfo ,cl* ...)
-       (let ([cl* (map (lambda (cl)
+       (let* ([r* (map (lambda (cl) (box #f)) cl*)]
+              [t* (map (lambda (cl) (predicates-copy types)) cl*)]
+              [x** (map (lambda (cl)
+                         (nanopass-case (Lsrc CaseLambdaClause) cl
+                           [(clause (,x* ...) ,interface ,body) x*]))
+                       cl*)]
+              [cl* (map (lambda (cl r t)
                          (nanopass-case (Lsrc CaseLambdaClause) cl
                            [(clause (,x* ...) ,interface ,body)
-                            (let ([body (cptypes body (box #f) (predicates-copy types))])
+                            (let ([body (cptypes body 'value r t)]) #;FIXME
                               (with-output-language (Lsrc CaseLambdaClause)
                                 `(clause (,x* ...) ,interface ,body)))]))
-                       cl*)])
+                       cl* r* t*)])
+         (context-case ctxt
+           [(app/let) #;FIXME ;also for apply / call-with-values ?
+            (when (fx= (length cl*) 1)
+              (set-box! ret (unbox (car r*)))
+              (predicates-merge! types (car t*) (car x**)))]
+            [else (void)])
          `(case-lambda ,preinfo ,cl* ...))]
       [(call ,preinfo ,e0 ,e* ...)
-       (let* ([r0 (box #f)]
-              [t0 (predicates-copy types)]
-              [e0 (cptypes e0 r0 t0)]
-              [r* (map (lambda (e) (box #f)) e*)]
+       (let* ([r* (map (lambda (e) (box #f)) e*)]
               [t* (map (lambda (e) (predicates-copy types)) e*)]
-              [e* (map cptypes e* r* t*)])
-         (predicates-merge! types t0 '())
-         (for-each (lambda (t) (predicates-merge! types t '())) t*)
+              [e* (map (lambda (e r t) (cptypes e 'value r t)) e* r* t*)]
+              [e0 (nanopass-case (Lsrc Expr) e0
+                    [(case-lambda ,preinfo (clause (,x* ...) ,interface ,body)) ;move this part to case-lambda
+                     (guard (fx= interface (length x*)))
+                     (for-each (lambda (t) (predicates-merge! types t '())) t*)
+                     (let ([subtypes (predicates-copy types)])
+                       (for-each (lambda (x r) (predicates-add! subtypes x (unbox r)))
+                                 x*
+                                 r*)
+                       (let ([e0 (cptypes e0 'app/let ret subtypes)])  #;FIXME
+                         (predicates-merge! types subtypes x*)
+                         e0))]
+                    [(case-lambda ,preinfo ,cl* ...)
+                     (for-each (lambda (t) (predicates-merge! types t '())) t*)
+                     (cptypes e0 'app/let ret types)]  #;FIXME
+                    [else
+                      (let* ([r0 (box #f)]
+                             [t0 (predicates-copy types)]
+                             [e0 (cptypes e0 'value r0 t0)]) #;FIXME
+                        (for-each (lambda (t) (predicates-merge! types t '())) t*)
+                        (predicates-merge! types t0 '())
+                        e0)])])
          `(call ,preinfo ,e0 ,e* ...))]
       [(letrec ([,x* ,e*] ...) ,body)
        (let* ([r* (map (lambda (e) (box #f)) e*)]
               [t* (map (lambda (e) (predicates-copy types)) e*)]
-              [e* (map (lambda (e r t) (cptypes e r t)) e* r* t*)])
+              [e* (map (lambda (e r t) (cptypes e 'value r t)) e* r* t*)])
          (for-each (lambda (t) (predicates-merge! types t x*)) t*)
-         (let ([body (cptypes body ret types)])
+         (let ([body (cptypes body ctxt ret types)])
            `(letrec ([,x* ,e*] ...) ,body)))]
       [(letrec* ([,x* ,e*] ...) ,body)
        (let* ([r* (map (lambda (e) (box #f)) e*)]
-              [e* (map (lambda (e r) (cptypes e r types)) e* r*)]
-              [body (cptypes body ret types)])
+              [e* (map (lambda (e r) (cptypes e 'value r types)) e* r*)]
+              [body (cptypes body ctxt ret types)])
          `(letrec* ([,x* ,e*] ...) ,body))]
       [,pr ir]
-      [(foreign ,conv ,name ,[cptypes : e (box #f) types -> e] (,arg-type* ...) ,result-type)
+      [(foreign ,conv ,name ,[cptypes : e 'value (box #f) types -> e] (,arg-type* ...) ,result-type)
        `(foreign ,conv ,name ,e (,arg-type* ...) ,result-type)]
-      [(fcallable ,conv ,[cptypes : e (box #f) types -> e] (,arg-type* ...) ,result-type)
+      [(fcallable ,conv ,[cptypes : e 'value (box #f) types -> e] (,arg-type* ...) ,result-type)
        `(fcallable ,conv ,e (,arg-type* ...) ,result-type)]
       [(record ,rtd ,rtd-expr ,e* ...)
        (let* ([t-rtd-expr (predicates-copy types)]
-              [rtd-expr (cptypes rtd-expr (box #f) t-rtd-expr)]
+              [rtd-expr (cptypes rtd-expr 'value (box #f) t-rtd-expr)]
               [t* (map (lambda (e) (predicates-copy types)) e*)]
-              [e* (map (lambda (e t) (cptypes e (box #f) t)) e* t*)])
+              [e* (map (lambda (e t) (cptypes e 'value (box #f) t)) e* t*)])
          (predicates-merge! types t-rtd-expr '())
          (for-each (lambda (t) (predicates-merge! types t '())) t*)
          `(record ,rtd ,rtd-expr ,e* ...))]
-      [(record-ref ,rtd ,type ,index ,[cptypes : e (box #f) types -> e])
+      [(record-ref ,rtd ,type ,index ,[cptypes : e 'value (box #f) types -> e])
        `(record-ref ,rtd ,type ,index ,e)]
       [(record-set! ,rtd ,type ,index ,e1 , e2) ;can be reordered?
        (let* ([t1 (predicates-copy types)]
               [t2 (predicates-copy types)]
-              [e1 (cptypes e1 (box #f) t1)]
-              [e2 (cptypes e2 (box #f) t2)])
+              [e1 (cptypes e1 'value (box #f) t1)]
+              [e2 (cptypes e2 'value (box #f) t2)])
        (predicates-merge! types t1 '())
        (predicates-merge! types t2 '())
        `(record-set! ,rtd ,type ,index ,e1 ,e2))]
-      [(record-type ,rtd ,[cptypes : e (box #f) types -> e])
+      [(record-type ,rtd ,[cptypes : e 'value (box #f) types -> e])
        `(record-type ,rtd ,e)]
-      [(record-cd ,rcd ,rtd-expr ,[cptypes : e (box #f) types -> e])
+      [(record-cd ,rcd ,rtd-expr ,[cptypes : e 'value (box #f) types -> e])
        `(record-cd ,rcd ,rtd-expr ,e)]
       [(immutable-list (,e* ...) ,e)
        (let* ([t* (map (lambda (e) (predicates-copy types)) e*)]
-              [e* (map (lambda (e t) (cptypes e (box #f) t)) e* t*)]
-              [e (cptypes e ret types)]) #;CHECK
+              [e* (map (lambda (e t) (cptypes e 'value (box #f) t)) e* t*)]
+              [e (cptypes e 'value ret types)]) #;CHECK
          `(immutable-list (,e*  ...) ,e))]
       [(moi) ir]
       [(pariah) ir]
-      [(cte-optimization-loc ,box0 ,[cptypes : e (box #f) types -> e]) ;don't shadow box
+      [(cte-optimization-loc ,box0 ,[cptypes : e 'value (box #f) types -> e]) ;don't shadow box
        `(cte-optimization-loc ,box0 ,e)]
       [(cpvalid-defer ,e) (sorry! who "cpvalid leaked a cpvalid-defer form ~s" ir)]
       [(profile ,src) ir]
@@ -209,5 +260,5 @@ Notes:
       #;[else ir]))
 
 (lambda (x)
-  (cptypes x (box #f) (predicates-new)))
+  (cptypes x 'value (box #f) (predicates-new)))
 ))
