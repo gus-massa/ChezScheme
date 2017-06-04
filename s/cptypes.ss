@@ -177,42 +177,64 @@ Notes:
          [else
           (set-box! ret (predicates-lookup types x))
           ir])]
-      [(seq ,[cptypes : e1 'effect (box #f) types #f #f -> e1]
-            ,[cptypes : e2 ctxt ret types t-types f-types -> e2])
-       (make-seq ctxt e1 e2)]
+      [(seq ,e1 ,e2)
+       (let* ([r1 (box #f)]
+              [e1 (cptypes e1 'effect r1 types #f #f)])
+         (cond 
+           [(check-predicate-implies? (unbox r1) 'bottom?)
+            (set-box! ret (unbox r1))
+            e1]
+           [else 
+            (let ([e2 (cptypes e2 ctxt ret types t-types f-types)])
+              (make-seq ctxt e1 e2))]))]
       [(if ,e1 ,e2 ,e3)
        (let* ([r1 (box #f)]
               [t-types1 (predicates-copy types)]
               [f-types1 (predicates-copy types)]
               [e1 (cptypes e1 'test r1 types t-types1 f-types1)])
          (cond
-           [(check-predicate-implies? (unbox r1) false-rec)
-            (predicates-merge! t-types f-types1 '())
-            (predicates-merge! f-types f-types1 '())
-            (let ([e3 (cptypes e3 ctxt ret f-types1 t-types f-types)])
-              (make-seq ctxt e1 e3))]
+           [(check-predicate-implies? (unbox r1) 'bottom?) ;check bottom before not false-rec
+            (set! ret (unbox r1))
+            e1]
            [(check-predicate-implies-not? (unbox r1) false-rec)
             (predicates-merge! t-types t-types1 '())
             (predicates-merge! f-types t-types1 '())
             (let ([e2 (cptypes e2 ctxt ret t-types1 t-types f-types)])
               (make-seq ctxt e1 e2))]
+           [(check-predicate-implies? (unbox r1) false-rec)
+            (predicates-merge! t-types f-types1 '())
+            (predicates-merge! f-types f-types1 '())
+            (let ([e3 (cptypes e3 ctxt ret f-types1 t-types f-types)])
+              (make-seq ctxt e1 e3))]
            [else
             (let* ([r2 (box #f)]
                    [t-types2 (predicates-copy t-types1)]
                    [f-types2 (predicates-copy t-types1)]
-                   [e2 (cptypes e2 'value r2 t-types1 t-types2 f-types2)]
+                   [e2 (cptypes e2 ctxt r2 t-types1 t-types2 f-types2)]
                    [r3 (box #f)]
                    [t-types3 (predicates-copy f-types1)]
                    [f-types3 (predicates-copy f-types1)]
-                   [e3 (cptypes e3 'value r3 f-types1 t-types3 f-types3)])
-              (when (check-predicate-implies? (unbox r2) false-rec)
-               (predicates-merge! t-types t-types3 '()))
-              (when (check-predicate-implies-not? (unbox r2) false-rec)
-               (predicates-merge! f-types f-types3 '()))
-              (when (check-predicate-implies? (unbox r3) false-rec)
-               (predicates-merge! t-types t-types2 '()))
-              (when (check-predicate-implies-not? (unbox r3) false-rec)
-               (predicates-merge! f-types f-types2 '()))
+                   [e3 (cptypes e3 ctxt r3 f-types1 t-types3 f-types3)])
+              (cond
+                [(check-predicate-implies? (unbox r2) 'bottom?) ;check bottom before not false-rec
+                 (predicates-merge! t-types t-types3 '())
+                 (predicates-merge! f-types f-types3 '())
+                 (predicates-merge! types f-types1 '())]
+                [(check-predicate-implies-not? (unbox r2) false-rec)
+                 (predicates-merge! f-types f-types3 '())]
+                [(check-predicate-implies? (unbox r2) false-rec)
+                 (predicates-merge! t-types t-types3 '())])
+              (cond
+                [(check-predicate-implies? (unbox r3) 'bottom?) ;check bottom before not false-rec
+                 (predicates-merge! t-types t-types2 '())
+                 (predicates-merge! f-types f-types2 '())
+                 (predicates-merge! types t-types1 '())]
+                [(check-predicate-implies-not? (unbox r3) false-rec)
+                 (predicates-merge! f-types f-types2 '())]
+                [(check-predicate-implies? (unbox r3) false-rec)
+                 (predicates-merge! t-types t-types2 '())])
+              (when (eq? (unbox r2) (unbox r3)) #;FIXME
+                (set-box! ret (unbox r2)))
               `(if ,e1 ,e2 ,e3))]))]
       [(set! ,maybe-src ,x ,[cptypes : e 'value (box #f) types #f #f -> e])
        (set-box! ret void-rec)
@@ -250,6 +272,10 @@ Notes:
             (predicates-add/ref! types (car e*) 'box?)
             (predicates-add/ref! t-types (car e*) 'box?)
             (predicates-add/ref! f-types (car e*) 'box?)
+            ir]
+           [(and (fx>= (length e*) 2)
+                 (eq? (primref-name pr) 'error))
+            (set-box! ret 'bottom?) ;pseudo-predicate
             ir]
            [(eq? (primref-name pr) 'vector)
             (set-box! ret 'vector?)

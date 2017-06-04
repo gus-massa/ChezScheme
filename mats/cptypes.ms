@@ -116,9 +116,45 @@
          '(lambda (x) (if (vector? x) (void) (vector? x)))
          '(lambda (x) (if (vector? x) (void) #t))))
   (cptypes-equivalent-expansion?
+    '(lambda (x y) (if (vector? x) (if (vector? y) (list (vector? x) (vector? y)) (void)) (void)))
+    '(lambda (x y) (if (vector? x) (if (vector? y) (list #t #t) (void)) (void))))
+  (cptypes-equivalent-expansion?
     '(lambda (x y) (if (and (vector? x) (vector? y)) (list (vector? x) (vector? y)) (void)))
     '(lambda (x y) (if (and (vector? x) (vector? y)) (list #t #t) (void))))
   (not (cptypes-equivalent-expansion?
-         '(lambda (x y) (if (or (vector? x) (vector? y)) (list (vector? x) (vector? y)) (void)))
-         '(lambda (x y) (if (or (vector? x) (vector? y)) (list #t #t) (void)))))
+         '(lambda (x y) (if (or (vector? x) (vector? y)) (vector? x) (void)))
+         '(lambda (x y) (if (or (vector? x) (vector? y)) #t (void)))))
+  (not (cptypes-equivalent-expansion?
+         '(lambda (x y) (if (or (vector? x) (vector? y)) (vector? y) (void)))
+         '(lambda (x y) (if (or (vector? x) (vector? y)) #t (void)))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x y) (if (if (vector? x) (vector? y) #f) (list (vector? x) (vector? y)) (void)))
+    '(lambda (x y) (if (if (vector? x) (vector? y) #f) (list #t #t) (void))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x y) (if (if (vector? x) (vector? y) #t) (void) (vector? x)))
+    '(lambda (x y) (if (if (vector? x) (vector? y) #t) (void) #t)))
+  (cptypes-equivalent-expansion?
+    '(begin (error 'who "msg") (display 1)) ;could be reduced in cp0
+    '(begin (error 'who "msg") (display 2)))
+  (cptypes-equivalent-expansion?
+    '(if (error 'who "msg") (display 1) (display 2))
+    '(if (error 'who "msg") (display -1) (display -2)))
+  (cptypes-equivalent-expansion?
+    '(begin (if (error 'who "msg") (display 1) (display 2)) (display 3))
+    '(begin (if (error 'who "msg") (display 1) (display 2)) (display -3)))
+  (cptypes-equivalent-expansion?
+    '(begin (if (box? (box 0)) (error 'who "msg") (void)) (display 1))
+    '(begin (if (box? (box 0)) (error 'who "msg") (void)) (display -1)))
+  (not (cptypes-equivalent-expansion?
+         '(begin (if (box? (box 0)) (void) (error 'who "msg")) (display 1))
+         '(begin (if (box? (box 0)) (void) (error 'who "msg")) (display -1))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (if (zero? (random 2)) (vector-length x) (error 'who "msg")) (vector? x))
+    '(lambda (x) (if (zero? (random 2)) (vector-length x) (error 'who "msg")) #t))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (if (zero? (random 2)) (error 'who "msg") (vector-length x)) (vector? x))
+    '(lambda (x) (if (zero? (random 2)) (error 'who "msg") (vector-length x)) #t))
+  (cptypes-equivalent-expansion?
+    '(begin (if (zero? (random 2)) (error 'who "msg") (error 'who "other")) (display 1))
+    '(begin (if (zero? (random 2)) (error 'who "msg") (error 'who "other")) (display -1)))
 )
