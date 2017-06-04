@@ -109,4 +109,16 @@
   (cptypes-equivalent-expansion?
     '(vector? (let ([y (vector 1 2 3)]) (display (list y y)) (vector 4 5 6)))
     '(begin (let ([y (vector 1 2 3)]) (display (list y y)) (vector 4 5 6)) #t))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (if (vector? x) (vector? x) (void)))
+    '(lambda (x) (if (vector? x) #t (void))))
+  (not (cptypes-equivalent-expansion?
+         '(lambda (x) (if (vector? x) (void) (vector? x)))
+         '(lambda (x) (if (vector? x) (void) #t))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x y) (if (and (vector? x) (vector? y)) (list (vector? x) (vector? y)) (void)))
+    '(lambda (x y) (if (and (vector? x) (vector? y)) (list #t #t) (void))))
+  (not (cptypes-equivalent-expansion?
+         '(lambda (x y) (if (or (vector? x) (vector? y)) (list (vector? x) (vector? y)) (void)))
+         '(lambda (x y) (if (or (vector? x) (vector? y)) (list #t #t) (void)))))
 )
