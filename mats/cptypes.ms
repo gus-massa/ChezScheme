@@ -64,6 +64,12 @@
     '(lambda (x) (vector-length x) (if (vector? x) (newline) (void)))
     '(lambda (x) (vector-length x) (if #t (newline) (void))))
   (cptypes-equivalent-expansion?
+    '(lambda (x) (when (vector? x) (if x (newline) (void))))
+    '(lambda (x) (when (vector? x) (if #t (newline) (void)))))
+  (not (cptypes-equivalent-expansion?
+         '(lambda (x) (when (boolean? x) (if x (newline) (void))))
+         '(lambda (x) (when (boolean? x) (if #t (newline) (void))))))
+  (cptypes-equivalent-expansion?
     '(lambda (x) (vector-length x) (if (zero? (random 2)) (vector? x) (void)))
     '(lambda (x) (vector-length x) (if (zero? (random 2)) #t (void))))
   (cptypes-equivalent-expansion?
@@ -157,4 +163,47 @@
   (cptypes-equivalent-expansion?
     '(begin (if (zero? (random 2)) (error 'who "msg") (error 'who "other")) (display 1))
     '(begin (if (zero? (random 2)) (error 'who "msg") (error 'who "other")) (display -1)))
+)
+
+(define (test-chain l)
+  (let loop ([l l])
+    (if (null? l)
+        #t
+        (and (let loop ([t (cdr l)])
+               (if (null? t)
+                   #t
+                   (and (cptypes-equivalent-expansion?
+                          `(lambda (x) (when (,(car l) x) (,(car t) x)))
+                          `(lambda (x) (when (,(car l) x) #t)))
+                        (not (cptypes-equivalent-expansion?
+                               `(lambda (x) (when (,(car t) x) (,(car l) x)))
+                               `(lambda (x) (when (,(car t) x) #t))))
+                        (loop (cdr t)))))
+             (loop (cdr l))))))
+
+(define (test-disjoint l)
+  (let loop ([l l])
+    (if (null? l)
+        #t
+       (and (cptypes-equivalent-expansion?
+              `(lambda (x) (when (,(car l) x) (,(car l) x)))
+              `(lambda (x) (when (,(car l) x) #t)))
+            (let loop ([t (cdr l)])
+              (if (null? t)
+                  #t
+                  (and (cptypes-equivalent-expansion?
+                         `(lambda (x) (when (,(car l) x) (,(car t) x)))
+                         `(lambda (x) (when (,(car l) x) #f)))
+                       (cptypes-equivalent-expansion?
+                         `(lambda (x) (when (,(car t) x) (,(car l) x)))
+                         `(lambda (x) (when (,(car t) x) #f)))
+                       (loop (cdr t)))))
+            (loop (cdr l))))))
+
+(mat cptypes-type-implies?
+  (test-chain '(fixnum? integer? number?))
+  (test-chain '(not boolean?))
+  (test-disjoint '(pair? box? record? number? vector? string? bytevector? fxvector? boolean? null?))
+  (test-disjoint '(pair? box? integer? not))
+  (test-disjoint '(pair? fixnum?))
 )

@@ -47,6 +47,11 @@ Notes:
     (define void-rec `(quote ,(void)))
     (define true-rec `(quote #t))
     (define false-rec `(quote #f))
+    (define null-rec `(quote ()))
+    (define empty-vector-rec `(quote #()))
+    (define empty-string-rec `(quote ""))
+    (define empty-bytevector-rec `(quote #vu8()))
+    (define empty-fxvector-rec `(quote #vfx()))
 
     (define (simple? e) ;FIXME
       (nanopass-case (Lsrc Expr) e
@@ -123,27 +128,69 @@ Notes:
       [else
        (void)]))
 
+  (define (primref-name->predicate name)
+    (case name
+      [(pair? box?
+        record?
+        fixnum? integer? number?
+        vector? string? bytevector? fxvector?
+        bottom? ptr?  ;pseudo-predicates
+        boolean?)
+        name]
+      [void? void-rec] ;fake-predicate
+      #;[true-obj? true-rec]
+      [not false-rec]
+      #;[not? false-rec]
+      [null? null-rec]
+      #;[vector-empty? empty-vector-rec]
+      #;[string-empty? empty-string-rec]
+      #;[bytevector-empty? empty-bytevector-rec]
+      #;[fxvector-empty? empty-fxvector-rec]
+      [else #f]))
+
+  (define (primref->predicate pr)
+    (primref-name->predicate (primref-name pr)))
+
   (define (check-constant-is? x pred?)
     (nanopass-case (Lsrc Expr) x
       [(quote ,d) (pred? d)]
       [else #f]))
 
+  ; strange properties of bottom? here:
+  ; (implies? x bottom?): only for x=bottom?
+  ; (implies? bottom? y): allways
+  ; (implies-not? x bottom?): never
+  ; (implies-not? bottom? y): never
+  ; check (implies? x bottom?) before (implies? x something?)
   (define (check-predicate-implies? x y)
     (and x
          y
          (or (eq? x y)
              (and (Lsrc? x)
                   (Lsrc? y)
-                 (nanopass-case (Lsrc Expr) x
-                   [(quote ,d1) 
-                    (nanopass-case (Lsrc Expr) y
-                      [(quote ,d2) (eq? d1 d2)] #;CHECK ;eq?/eqv?/equal?
-                      [else #f])]
-                   [else #f]))
+                  (nanopass-case (Lsrc Expr) x
+                    [(quote ,d1) 
+                     (nanopass-case (Lsrc Expr) y
+                       [(quote ,d2) (eq? d1 d2)] #;CHECK ;eq?/eqv?/equal?
+                       [else #f])]
+                    [else #f]))
+             (eq? x 'bottom?)
              (cond
-               [(eq? y 'vector?) (check-constant-is? x vector?)] 
+               [(eq? y 'pair?) (check-constant-is? x pair?)] 
                [(eq? y 'box?) (check-constant-is? x box?)] 
-               [(eq? y 'number?) (check-constant-is? x number?)]
+               [(eq? y 'fixnum?) (check-constant-is? x target-fixnum?)]
+               [(eq? y 'integer?) (or (eq? x 'fixnum?)
+                                      (check-constant-is? x integer?))]
+               [(eq? y 'number?) (or (eq? x 'fixnum?)
+                                     (eq? x 'integer?)
+                                     (check-constant-is? x integer?))]
+               [(eq? y 'vector?) (check-constant-is? x vector?)] 
+               [(eq? y 'string?) (check-constant-is? x string?)]
+               [(eq? y 'bytevector?) (check-constant-is? x bytevector?)]
+               [(eq? y 'fxvector?) (check-constant-is? x fxvector?)] 
+               [(eq? y 'boolean?) (or (check-constant-is? x not)
+                                      (check-constant-is? x (lambda (x) (eq? x #t))))]
+               [(eq? y 'ptr?) #t]
                [else #f]))))
 
   (define (check-predicate-implies-not? x y)
@@ -156,23 +203,22 @@ Notes:
   (define-pass cptypes : Lsrc (ir ctxt ret types t-types f-types) -> Lsrc ()
     (Expr : Expr (ir) -> Expr ()
       [(quote ,d)
-       (when (number? d)
-        (display (list d)))
-        (set-box! ret ir)
-        ir]
+       (set-box! ret ir)
+       ir]
       [(ref ,maybe-src ,x)
        (context-case ctxt
          [(test)
           (let ([t (predicates-lookup types x)])
             (cond
-              [(check-predicate-implies-not? t false-rec) 
+              [(check-predicate-implies-not? t false-rec)
                (set-box! ret true-rec)
                true-rec]
-              [(check-predicate-implies? t false-rec) 
+              [(check-predicate-implies? t false-rec)
                (set-box! ret false-rec)
                 false-rec]
               [else
                (set-box! ret t)
+               (predicates-add! f-types x false-rec)
                ir]))]
          [else
           (set-box! ret (predicates-lookup types x))
@@ -193,7 +239,7 @@ Notes:
               [f-types1 (predicates-copy types)]
               [e1 (cptypes e1 'test r1 types t-types1 f-types1)])
          (cond
-           [(check-predicate-implies? (unbox r1) 'bottom?) ;check bottom before not false-rec
+           [(check-predicate-implies? (unbox r1) 'bottom?) ;check bottom first
             (set! ret (unbox r1))
             e1]
            [(check-predicate-implies-not? (unbox r1) false-rec)
@@ -216,7 +262,7 @@ Notes:
                    [f-types3 (predicates-copy f-types1)]
                    [e3 (cptypes e3 ctxt r3 f-types1 t-types3 f-types3)])
               (cond
-                [(check-predicate-implies? (unbox r2) 'bottom?) ;check bottom before not false-rec
+                [(check-predicate-implies? (unbox r2) 'bottom?) ;check bottom first
                  (predicates-merge! t-types t-types3 '())
                  (predicates-merge! f-types f-types3 '())
                  (predicates-merge! types f-types1 '())]
@@ -225,7 +271,7 @@ Notes:
                 [(check-predicate-implies? (unbox r2) false-rec)
                  (predicates-merge! t-types t-types3 '())])
               (cond
-                [(check-predicate-implies? (unbox r3) 'bottom?) ;check bottom before not false-rec
+                [(check-predicate-implies? (unbox r3) 'bottom?) ;check bottom first
                  (predicates-merge! t-types t-types2 '())
                  (predicates-merge! f-types f-types2 '())
                  (predicates-merge! types t-types1 '())]
@@ -247,8 +293,8 @@ Notes:
          (for-each (lambda (t) (predicates-merge! types t '())) t*)
          (cond
            [(and (fx= (length e*) 1)
-                 (memq (primref-name pr) '(vector? box? number?)))
-            (let ([pred (primref-name pr)]
+                 (primref->predicate pr))
+            (let ([pred (primref->predicate pr)]
                   [var (unbox (car r*))])
               (cond
                 [(check-predicate-implies? var pred) 
@@ -405,8 +451,7 @@ Notes:
        `(cte-optimization-loc ,box0 ,e)]
       [(cpvalid-defer ,e) (sorry! who "cpvalid leaked a cpvalid-defer form ~s" ir)]
       [(profile ,src) ir]
-      [else ($oops who "unrecognized record ~s" ir)]
-      #;[else ir]))
+      [else ($oops who "unrecognized record ~s" ir)]))
 
 (lambda (x)
   (cptypes x 'value (box #f) (predicates-new) #f #f))
