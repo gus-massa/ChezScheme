@@ -319,11 +319,13 @@ Notes:
                      (guard (fx= interface (length x*)))
                      (for-each (lambda (t) (predicates-merge! types t '())) t*)
                      (let ([subtypes (predicates-copy types)])
-                       (for-each (lambda (x r) (predicates-add! subtypes x (unbox r)))
-                                 x*
-                                 r*)
-                       (let ([e0 (cptypes e0 'app/let ret subtypes #f #f)])  #;FIXME
+                       (for-each (lambda (x r) (predicates-add! subtypes x (unbox r))) x* r*)
+                       (let* ([t-subtypes (predicates-copy subtypes)]
+                              [f-subtypes (predicates-copy subtypes)]
+                              [e0 (cptypes e0 'app/let ret subtypes t-subtypes f-subtypes)])  #;FIXME
                          (predicates-merge! types subtypes x*)
+                         (predicates-merge! t-types t-subtypes x*)
+                         (predicates-merge! f-types f-subtypes x*)
                          e0))]
                     [(case-lambda ,preinfo ,cl* ...)
                      (for-each (lambda (t) (predicates-merge! types t '())) t*)
@@ -341,12 +343,29 @@ Notes:
               [t* (map (lambda (e) (predicates-copy types)) e*)]
               [e* (map (lambda (e r t) (cptypes e 'value r t #f #f)) e* r* t*)])
          (for-each (lambda (t) (predicates-merge! types t x*)) t*)
-         (let ([body (cptypes body ctxt ret types t-types f-types)])
-           `(letrec ([,x* ,e*] ...) ,body)))]
+         (let ([subtypes (predicates-copy types)])
+           (for-each (lambda (x r) (predicates-add! subtypes x (unbox r))) x* r*)
+           (let* ([t-subtypes (predicates-copy subtypes)]
+                  [f-subtypes (predicates-copy subtypes)]
+                  [body (cptypes body ctxt ret subtypes t-subtypes f-subtypes)])
+             (predicates-merge! types subtypes x*)
+             (predicates-merge! t-types t-subtypes x*)
+             (predicates-merge! f-types f-subtypes x*)
+             `(letrec ([,x* ,e*] ...) ,body))))]
       [(letrec* ([,x* ,e*] ...) ,body)
-       (let* ([r* (map (lambda (e) (box #f)) e*)]
-              [e* (map (lambda (e r) (cptypes e 'value r types #f #f)) e* r*)]
-              [body (cptypes body ctxt ret types t-types f-types)])
+       (let* ([subtypes (predicates-copy types)]
+              [r* (map (lambda (e) (box #f)) e*)]
+              [e* (map (lambda (x e r)
+                         (let ([e (cptypes e 'value r subtypes #f #f)])
+                           (predicates-add! subtypes x (unbox r))
+                           e))
+                    x* e* r*)]
+              [t-subtypes (predicates-copy subtypes)]
+              [f-subtypes (predicates-copy subtypes)]
+              [body (cptypes body ctxt ret subtypes t-subtypes f-subtypes)])
+         (predicates-merge! types subtypes x*)
+         (predicates-merge! t-types t-subtypes x*)
+         (predicates-merge! f-types f-subtypes x*)
          `(letrec* ([,x* ,e*] ...) ,body))]
       [,pr ir]
       [(foreign ,conv ,name ,[cptypes : e 'value (box #f) types #f #f -> e] (,arg-type* ...) ,result-type)
