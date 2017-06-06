@@ -456,3 +456,5 @@
 - fix overflow detection for fxsll, fxarithmetic-shift-left, and
   fxarithmetic-shift
     library.ss, fx.ms, release_notes.stex
+- fix signature of fxbit-set?
+    primdata.ss
