@@ -43,6 +43,9 @@
     '(box? (box 1)) 
     #t)
   (cptypes-equivalent-expansion?
+    '(pair? (cons 1 2)) 
+    #t)
+  (cptypes-equivalent-expansion?
     '(lambda (x) (vector-length x) (vector? x))
     '(lambda (x) (vector-length x) #t))
   (cptypes-equivalent-expansion?
@@ -202,8 +205,9 @@
 
 (mat cptypes-type-implies?
   (test-chain '(fixnum? integer? number?))
+  (test-chain '(gensym? symbol?))
   (test-chain '(not boolean?))
-  (test-disjoint '(pair? box? record? number? vector? string? bytevector? fxvector? boolean? null?))
-  (test-disjoint '(pair? box? integer? not))
-  (test-disjoint '(pair? fixnum?))
+  (test-disjoint '(pair? box? record? number? vector? string? bytevector? fxvector? symbol? char? boolean? null?))
+  (test-disjoint '(pair? box? integer? gensym? not))
+  (test-disjoint '(pair? box? fixnum?))
 )

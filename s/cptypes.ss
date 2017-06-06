@@ -128,12 +128,14 @@ Notes:
       [else
        (void)]))
 
-  (define (primref-name->predicate name)
+  (define (primref-name->predicate name extend?)
     (case name
       [(pair? box?
         record?
         fixnum? integer? number?
         vector? string? bytevector? fxvector?
+        gensym? symbol?
+        char?
         bottom? ptr?  ;pseudo-predicates
         boolean?)
         name]
@@ -146,10 +148,15 @@ Notes:
       #;[string-empty? empty-string-rec]
       #;[bytevector-empty? empty-bytevector-rec]
       #;[fxvector-empty? empty-fxvector-rec]
+      [(not extend?) #f] ;---------------------------------------------------
+      [(bit? length? ufixnum? pfixnum?) 'fixnum?]
+      [(sint? uint? exact-integer?) 'integer?] ;perhaps use exact-integer? 
+      [(uinteger?) 'integer?]
+      [(flonum? rational? real? cflonum?) 'number?]
       [else #f]))
 
   (define (primref->predicate pr)
-    (primref-name->predicate (primref-name pr)))
+    (primref-name->predicate (primref-name pr) #f))
 
   (define (check-constant-is? x pred?)
     (nanopass-case (Lsrc Expr) x
@@ -183,11 +190,15 @@ Notes:
                                       (check-constant-is? x integer?))]
                [(eq? y 'number?) (or (eq? x 'fixnum?)
                                      (eq? x 'integer?)
-                                     (check-constant-is? x integer?))]
+                                     (check-constant-is? x number?))]
                [(eq? y 'vector?) (check-constant-is? x vector?)] 
                [(eq? y 'string?) (check-constant-is? x string?)]
                [(eq? y 'bytevector?) (check-constant-is? x bytevector?)]
                [(eq? y 'fxvector?) (check-constant-is? x fxvector?)] 
+               [(eq? y 'gensym?) (check-constant-is? x gensym?)] 
+               [(eq? y 'symbol?) (or (eq? x 'gensym?)
+                                     (check-constant-is? x symbol?))] 
+               [(eq? y 'char?) (check-constant-is? x char?)] 
                [(eq? y 'boolean?) (or (check-constant-is? x not)
                                       (check-constant-is? x (lambda (x) (eq? x #t))))]
                [(eq? y 'ptr?) #t]
@@ -199,6 +210,23 @@ Notes:
          y
          (not (check-predicate-implies? x y))
          (not (check-predicate-implies? y x))))
+
+  (define (symbol-append . x)
+    (string->symbol
+     (apply string-append (map symbol->string x))))  
+
+  (define (primref->result-predicate pr)
+    (let ([signatures (primref-signatures pr)])
+      (and (= (length signatures) 1)  ;TODO: Extend to mutiple signatures
+           (let* ([signature (car signatures)]
+                  [result (cadr signature)]) 
+             (cond
+               [(symbol? result)
+                (primref-name->predicate (symbol-append result '?) #t)]
+               [(equal? result '(ptr . ptr))
+                (primref-name->predicate 'pair? #t)]
+               [else
+                #f])))))
 
   (define-pass cptypes : Lsrc (ir ctxt ret types t-types f-types) -> Lsrc ()
     (Expr : Expr (ir) -> Expr ()
@@ -291,6 +319,7 @@ Notes:
               [e* (map (lambda (e r t) (cptypes e 'value r t #f #f)) e* r* t*)]
               [ir `(call ,preinfo ,pr ,e* ...)])
          (for-each (lambda (t) (predicates-merge! types t '())) t*)
+         (set-box! ret (primref->result-predicate pr))
          (cond
            [(and (fx= (length e*) 1)
                  (primref->predicate pr))
@@ -308,7 +337,6 @@ Notes:
                  ir]))]
            [(and (fx= (length e*) 1)
                  (eq? (primref-name pr) 'vector-length))
-            (set-box! ret 'number?)
             (predicates-add/ref! types (car e*) 'vector?)
             (predicates-add/ref! t-types (car e*) 'vector?)
             (predicates-add/ref! f-types (car e*) 'vector?)
@@ -318,16 +346,6 @@ Notes:
             (predicates-add/ref! types (car e*) 'box?)
             (predicates-add/ref! t-types (car e*) 'box?)
             (predicates-add/ref! f-types (car e*) 'box?)
-            ir]
-           [(and (fx>= (length e*) 2)
-                 (eq? (primref-name pr) 'error))
-            (set-box! ret 'bottom?) ;pseudo-predicate
-            ir]
-           [(eq? (primref-name pr) 'vector)
-            (set-box! ret 'vector?)
-            ir]
-           [(eq? (primref-name pr) 'box)
-            (set-box! ret 'box?)
             ir]
            [else
             ir]))]
