@@ -228,6 +228,34 @@ Notes:
                [else
                 #f])))))
 
+  (define (primref->argument-predicate pr pos)
+    (let ([signatures (primref-signatures pr)])
+      (and (= (length signatures) 1)  ;TODO: Extend to mutiple signatures
+           (let* ([signature (car signatures)]
+                  [arguments (car signature)])
+               (cond
+                 [(let ([dots (memq '... arguments)])
+                    (and dots (null? (cdr dots))))
+                  (cond
+                    [(< pos (- (length arguments) 2))
+                     (primref-name->predicate
+                      (symbol-append (list-ref arguments pos) '?)
+                      #f)]
+                    [else
+                     (primref-name->predicate 
+                      (symbol-append (list-ref arguments (- (length arguments) 2)) '?)
+                      #f)])]
+                 [(not (memq '... arguments))
+                  (cond
+                    [(< pos (length arguments))
+                     (let ([argument (list-ref arguments pos)])
+                       (if (pair? argument)
+                           (primref-name->predicate 'pair? #f)
+                           (primref-name->predicate (symbol-append argument '?) #f)))]
+                    [else
+                      #f])]
+                  [else #f])))))
+
   (define-pass cptypes : Lsrc (ir ctxt ret types t-types f-types) -> Lsrc ()
     (Expr : Expr (ir) -> Expr ()
       [(quote ,d)
@@ -320,6 +348,14 @@ Notes:
               [ir `(call ,preinfo ,pr ,e* ...)])
          (for-each (lambda (t) (predicates-merge! types t '())) t*)
          (set-box! ret (primref->result-predicate pr))
+         (for-each (lambda (e n)
+                     (let ([pred (primref->argument-predicate pr n)])
+                       (predicates-add/ref! types e pred)
+                       (predicates-add/ref! t-types e pred)
+                       (predicates-add/ref! f-types e pred)))
+                   e*
+                   (enumerate e*))
+         (primref->argument-predicate pr 0)
          (cond
            [(and (fx= (length e*) 1)
                  (primref->predicate pr))
@@ -335,18 +371,6 @@ Notes:
                 [else  
                  (predicates-add/ref! t-types (car e*) pred)
                  ir]))]
-           [(and (fx= (length e*) 1)
-                 (eq? (primref-name pr) 'vector-length))
-            (predicates-add/ref! types (car e*) 'vector?)
-            (predicates-add/ref! t-types (car e*) 'vector?)
-            (predicates-add/ref! f-types (car e*) 'vector?)
-            ir]
-           [(and (fx= (length e*) 1)
-                 (eq? (primref-name pr) 'unbox))
-            (predicates-add/ref! types (car e*) 'box?)
-            (predicates-add/ref! t-types (car e*) 'box?)
-            (predicates-add/ref! f-types (car e*) 'box?)
-            ir]
            [else
             ir]))]
       [(case-lambda ,preinfo ,cl* ...)
