@@ -16,7 +16,47 @@
 
 #|
 Notes:
- - types is only a stub.
+ - (cptypes ir ctxt ret types t-types f-types)
+   ir: expression to be optimized
+   <return value>: the optimized expression
+   
+   ctxt: 'effect 'value 'app/let
+         (TODO: replace 'app/let with an app record like in cp0)
+   ret: a box, to return the type of the result of the expression
+   types: a "predicates" record. Actually just a box with an assoc, but let's
+          pretend it's something fancy and manipulate it using only the API.
+          It has the associations of prelex to types that were discovered before
+          and it is possible to add more association that will be used in the
+          following expressions.
+          (box ((x . 'pair?) (y . 'vector) (z . `(quote 0))))
+   t-types: like types, but it also has the types that should be used in case
+            the expression is not a #f, so these types will be used in the 
+            "then" branch of an if.
+            It may be #f to signal that we don't care. This is automatically
+            handle in the "predicates" function.
+   f-types: idem for the "else" branch. (if x (something) (here x is #f))
+
+
+ - predicate: (each one, not the record)
+              They may be:
+              * a symbol to indicate the type, like 'vector? 'pair? 'number?
+                (there are a few fake values, in particular 'bottom? is used to
+                 signal that there is an error)
+              * a nanopass-quoted value that is okay-to-copy?, like
+                `(quote 0) `(quote 5) `(quote #t) `(quote '())
+                (this includes `(quote <record-type-descriptor?>))
+              * TODO: add something to indicate that x is a record of that type
+              * TODO: add something to indicate that x is a procedure to 
+                      create/setter/getter/predicate of a record of that type
+              * TODO: add primitives, probably the nanopass version of pr
+              * TODO: add procedure? and perhaps some minimal signature for them
+                  
+              
+ - most of the time I'm using eq? and eqv? as if they were equivalent.
+   this is not a good idea.
+ - most FIXME are not bugs but sites were the code can be improved. 
+ - most CHECK are parts where I'm not sure that it is correct. 
+ 
 |#
 
 (define $cptypes
