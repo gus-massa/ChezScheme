@@ -166,6 +166,18 @@
   (cptypes-equivalent-expansion?
     '(begin (if (zero? (random 2)) (error 'who "msg") (error 'who "other")) (display 1))
     '(begin (if (zero? (random 2)) (error 'who "msg") (error 'who "other")) (display -1)))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (null? x) (display x)))
+    '(lambda (x) (when (null? x) (display '()))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (vector? x) (eq? x 'vector?)))
+    '(lambda (x) (when (vector? x) #f)))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (vector? x) (pair? x)))
+    '(lambda (x) (when (vector? x) #f)))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (vector? x) (vector? x)))
+    '(lambda (x) (when (vector? x) #t)))
 )
 
 (define (test-chain l)
@@ -204,10 +216,12 @@
             (loop (cdr l))))))
 
 (mat cptypes-type-implies?
-  (test-chain '(fixnum? integer? number?))
+  (test-chain '((lambda (x) (eq? x 0)) fixnum? integer? number?))
   (test-chain '(gensym? symbol?))
   (test-chain '(not boolean?))
+  (test-chain '((lambda (x) (eq? x #t)) boolean?))
+  (test-chain '(record-type-descriptor? record?))
   (test-disjoint '(pair? box? record? number? vector? string? bytevector? fxvector? symbol? char? boolean? null?))
-  (test-disjoint '(pair? box? integer? gensym? not))
-  (test-disjoint '(pair? box? fixnum?))
+  (test-disjoint '(pair? box? record-type-descriptor? integer? gensym? not))
+  (test-disjoint '(pair? box? fixnum? (lambda (x) (eq? x #t))))
 )

@@ -52,6 +52,8 @@ Notes:
     (define empty-string-rec `(quote ""))
     (define empty-bytevector-rec `(quote #vu8()))
     (define empty-fxvector-rec `(quote #vfx()))
+    (define eof-rec `(quote #!eof))
+    (define bwp-rec `(quote #!bwp))
 
     (define (simple? e) ;FIXME
       (nanopass-case (Lsrc Expr) e
@@ -128,10 +130,41 @@ Notes:
       [else
        (void)]))
 
+  (define okay-to-copy?
+    (lambda (obj)
+      ; okay to copy obj if (eq? (faslin (faslout x)) x) => #t or (in the case of numbers and characters)
+      ; the value of (eq? x x) is unspecified
+      (or (symbol? obj)
+          (number? obj)
+          (char? obj)
+          (boolean? obj)
+          (null? obj)
+          (eqv? obj "")
+          (eqv? obj '#())
+          (eqv? obj '#vu8())
+          (eqv? obj '#vfx())
+          (eq? obj (void))
+          (eof-object? obj)
+          (bwp-object? obj)
+          (eq? obj '#6=#6#)
+          ($unbound-object? obj)
+          (record-type-descriptor? obj))))
+
+  (define (datum->predicate d ir)
+    (cond
+      [(okay-to-copy? d) ir]
+      [(pair? d) 'pair?]
+      [(box? d) 'box?]
+      [(vector? d) 'vector?]
+      [(string? d) 'string?]
+      [(bytevector? d) 'bytevector?]
+      [(fxvector? d) 'fxvector?]
+      [else #f]))
+
   (define (primref-name->predicate name extend?)
     (case name
       [(pair? box?
-        record?
+        record? record-type-descriptor?
         fixnum? integer? number?
         vector? string? bytevector? fxvector?
         gensym? symbol?
@@ -140,10 +173,14 @@ Notes:
         boolean?)
         name]
       [void? void-rec] ;fake-predicate
-      #;[true-obj? true-rec]
+      #;[true-object? true-rec]
       [not false-rec]
       #;[not? false-rec]
       [null? null-rec]
+      [eof-object? eof-rec]
+      [bwp-object? bwp-rec]
+      #;[$?self?? "'#6=#6#"-rec] ;???
+      #;[$unbound-object? unbound-rec] ;???
       #;[vector-empty? empty-vector-rec]
       #;[string-empty? empty-string-rec]
       #;[bytevector-empty? empty-bytevector-rec]
@@ -183,8 +220,8 @@ Notes:
                     [else #f]))
              (eq? x 'bottom?)
              (cond
-               [(eq? y 'pair?) (check-constant-is? x pair?)] 
-               [(eq? y 'box?) (check-constant-is? x box?)] 
+               #;[(eq? y 'pair?) (check-constant-is? x pair?)] 
+               #;[(eq? y 'box?) (check-constant-is? x box?)] 
                [(eq? y 'fixnum?) (check-constant-is? x target-fixnum?)]
                [(eq? y 'integer?) (or (eq? x 'fixnum?)
                                       (check-constant-is? x integer?))]
@@ -201,6 +238,9 @@ Notes:
                [(eq? y 'char?) (check-constant-is? x char?)] 
                [(eq? y 'boolean?) (or (check-constant-is? x not)
                                       (check-constant-is? x (lambda (x) (eq? x #t))))]
+               [(eq? y 'record?) (or (eq? x 'record-type-descriptor?)
+                                     (check-constant-is? x record?))] 
+               [(eq? y 'record-type-descriptor?) (check-constant-is? x record-type-descriptor?)] 
                [(eq? y 'ptr?) #t]
                [else #f]))))
 
@@ -259,7 +299,7 @@ Notes:
   (define-pass cptypes : Lsrc (ir ctxt ret types t-types f-types) -> Lsrc ()
     (Expr : Expr (ir) -> Expr ()
       [(quote ,d)
-       (set-box! ret ir)
+       (set-box! ret (datum->predicate d ir))
        ir]
       [(ref ,maybe-src ,x)
        (context-case ctxt
@@ -277,8 +317,14 @@ Notes:
                (predicates-add! f-types x false-rec)
                ir]))]
          [else
-          (set-box! ret (predicates-lookup types x))
-          ir])]
+           (let ([t (predicates-lookup types x)])
+               (set-box! ret t)
+            (cond
+              [(Lsrc? t)
+               (nanopass-case (Lsrc Expr) t
+                 [(quote ,d) t]
+                 [else ir])]
+               [else ir]))])]
       [(seq ,e1 ,e2)
        (let* ([r1 (box #f)]
               [e1 (cptypes e1 'effect r1 types #f #f)])
@@ -357,6 +403,22 @@ Notes:
                    (enumerate e*))
          (primref->argument-predicate pr 0)
          (cond
+           [(and (fx= (length e*) 2)
+                 (or (eq? (primref-name pr) 'eq?)
+                     (eq? (primref-name pr) 'eqv?)))
+              (let ([r1 (car r*)]
+                    [r2 (cadr r*)]
+                    [e1 (car e*)]
+                    [e2 (cadr e*)])
+              (cond
+                [(or (check-predicate-implies-not? (unbox r1) (unbox r2))
+                     (check-predicate-implies-not? (unbox r2) (unbox r1)))
+                 (set-box! ret false-rec)
+                 (make-seq ctxt (make-seq 'effect e1 e2) false-rec)]
+                [else
+                 (predicates-add/ref! t-types e1 (unbox r2))
+                 (predicates-add/ref! t-types e2 (unbox r1))
+                 ir]))]
            [(and (fx= (length e*) 1)
                  (primref->predicate pr))
             (let ([pred (primref->predicate pr)]
