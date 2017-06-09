@@ -6,6 +6,8 @@ if [ $exitcode -ne 0 ] ; then
   echo "Failed: configure step"
   exit $exitcode
 fi
+( cd ${TARGET_MACHINE}/c && make)
+( cd ${TARGET_MACHINE}/s && make all)
 make
 exitcode=$?
 if [ $exitcode -ne 0 ] ; then
