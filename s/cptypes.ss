@@ -146,14 +146,14 @@ Notes:
                (not (assoc x (unbox types))))
       (set-box! types (cons (cons x type) (unbox types)))))
 
-  (define (predicates-merge! types from skiped)
+  (define (predicates-merge! types from skipped)
     (when (and types from)
       (let ([base (unbox types)]) ;try to avoid common part
         (let loop ([from (unbox from)])
           (when (and (not (null? from))
                      (not (eq? from base)))
             (let ([a (car from)])
-              (unless (member (car a) skiped)
+              (unless (member (car a) skipped)
                 (predicates-add! types (car a) (cdr a))))
             (loop (cdr from)))))))
 
@@ -255,7 +255,7 @@ Notes:
                   (nanopass-case (Lsrc Expr) x
                     [(quote ,d1) 
                      (nanopass-case (Lsrc Expr) y
-                       [(quote ,d2) (eq? d1 d2)] #;CHECK ;eq?/eqv?/equal?
+                       [(quote ,d2) (eqv? d1 d2)] #;CHECK ;eq?/eqv?/equal?
                        [else #f])]
                     [else #f]))
              (eq? x 'bottom?)
@@ -297,7 +297,7 @@ Notes:
 
   (define (primref->result-predicate pr)
     (let ([signatures (primref-signatures pr)])
-      (and (= (length signatures) 1)  ;TODO: Extend to mutiple signatures
+      (and (= (length signatures) 1)  ;TODO: Extend to multiple signatures
            (let* ([signature (car signatures)]
                   [result (cadr signature)]) 
              (cond
@@ -310,7 +310,7 @@ Notes:
 
   (define (primref->argument-predicate pr pos)
     (let ([signatures (primref-signatures pr)])
-      (and (= (length signatures) 1)  ;TODO: Extend to mutiple signatures
+      (and (= (length signatures) 1)  ;TODO: Extend to multiple signatures
            (let* ([signature (car signatures)]
                   [arguments (car signature)])
                (cond
