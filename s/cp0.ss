@@ -4391,7 +4391,11 @@
 
   (define-pass cp0 : Lsrc (ir ctxt env sc wd name moi) -> Lsrc ()
     (Expr : Expr (ir ctxt env sc wd name moi) -> Expr ()
-      [(quote ,d) ir]
+      [(quote ,d)
+       (context-case ctxt
+              [(effect) void-rec]
+              [(test) (if d true-rec false-rec)]
+              [else ir])]
       [(ref ,maybe-src ,x)
        (context-case ctxt
          [(effect) void-rec]
