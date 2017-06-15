@@ -4141,6 +4141,16 @@
                                                       (cdr ls*)) ...))))))))))
                     ctxt empty-env sc wd name moi)))])
 
+      (define-inline 2 unbox
+        [(?x)
+         (nanopass-case (Lsrc Expr) (result-exp (value-visit-operand! ?x))
+           [(call ,preinfo ,pr ,e)
+            (guard (eq? (primref-name pr) 'box))
+            (residualize-seq (list ?x) '() ctxt) 
+            (display "*")
+            (non-result-exp (operand-value ?x) e)]
+           [else #f])])
+
       (define-inline 2 car
         [(?x)
          (nanopass-case (Lsrc Expr) (result-exp (value-visit-operand! ?x))

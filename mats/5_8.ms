@@ -23,6 +23,9 @@
 (mat unbox
     (equal? (unbox '#&3) 3)
     (equal? (unbox (box 3)) 3)
+    (equal? (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level (max (optimize-level) 2)])
+              (expand/optimize '(unbox (box 'x))))
+            ''x)
  )
 
 (mat set-box!

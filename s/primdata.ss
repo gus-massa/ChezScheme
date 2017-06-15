@@ -1663,7 +1663,7 @@
   (transcript-on [sig [(pathname) -> (void)]] [flags true ieee r5rs])
   (truncate-file [sig [(output-port) (output-port sub-ptr) -> (void)]] [flags])
   (truncate-port [sig [(output-port) (output-port sub-ptr) -> (void)]] [flags])
-  (unbox [sig [(box) -> (ptr)]] [flags mifoldable discard])
+  (unbox [sig [(box) -> (ptr)]] [flags mifoldable discard cp02])
   (unget-u8 [sig [(binary-input-port u8) -> (void)]] [flags true])
   (unget-char [sig [(textual-input-port char) -> (void)]] [flags true])
   (unlock-object [sig [(ptr) -> (void)]] [flags unrestricted true])

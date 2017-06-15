@@ -33,6 +33,9 @@
     (eq? (car '(a b c)) 'a)
     (eq? (car (cons 'a 'b)) 'a)
     (error? (car "hi"))
+    (equal? (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level (max (optimize-level) 2)])
+              (expand/optimize '(car (cons 'a 'b))))
+            ''a)
  )
 
 (mat cdr
@@ -40,6 +43,9 @@
     (eq? (cdr (cons 'a 'b)) 'b)
     (null? (cdr (cons 'a '())))
     (error? (cdr 3))
+    (equal? (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level (max (optimize-level) 2)])
+              (expand/optimize '(cdr (cons 'a 'b))))
+            ''b)
  )   
 
 (mat set-car!
