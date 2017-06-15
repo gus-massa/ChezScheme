@@ -1026,7 +1026,7 @@
             ; structures.  ; mostly used to determine if we can discard an expression.
             ; 2015/02/11 sorted by frequency
             (nanopass-case (Lsrc Expr) e
-              ; might be nice to have an ignorem style syntax for the nanopass-case (and passes)
+              ; might be nice to have an ignored style syntax for the nanopass-case (and passes)
               [(quote ,d) #t]
               [(call ,preinfo ,e ,e* ...)
                (nanopass-case (Lsrc Expr) e
@@ -1055,7 +1055,7 @@
               [(foreign ,conv ,name ,e (,arg-type* ...) ,result-type) (memoize (simple? e))]
               [(record-type ,rtd ,e) (memoize (simple? e))]
               [(record ,rtd ,rtd-expr ,e* ...) (memoize (and (simple? rtd-expr) (andmap simple? e*)))]
-              [(pariah) #t]
+              [(pariah) #f]
               [(profile ,src) #f]
               [(cte-optimization-loc ,box ,e) (memoize (simple? e))]
               [(moi) #t]
