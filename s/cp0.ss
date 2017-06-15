@@ -4147,7 +4147,6 @@
            [(call ,preinfo ,pr ,e)
             (guard (eq? (primref-name pr) 'box))
             (residualize-seq (list ?x) '() ctxt) 
-            (display "*")
             (non-result-exp (operand-value ?x) e)]
            [else #f])])
 
