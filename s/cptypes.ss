@@ -295,46 +295,67 @@ Notes:
     (string->symbol
      (apply string-append (map symbol->string x))))  
 
+  (define (signature->result-predicate signature)
+    (let ([result (cadr signature)])
+      (cond
+        [(symbol? result)
+         (primref-name->predicate (symbol-append result '?) #t)]
+        [(pair? result)
+         (primref-name->predicate 'pair? #t)]
+        [else
+         #f])))
+
   (define (primref->result-predicate pr)
-    (let ([signatures (primref-signatures pr)])
-      (and (= (length signatures) 1)  ;TODO: Extend to multiple signatures
-           (let* ([signature (car signatures)]
-                  [result (cadr signature)]) 
-             (cond
-               [(symbol? result)
-                (primref-name->predicate (symbol-append result '?) #t)]
-               [(equal? result '(ptr . ptr))
-                (primref-name->predicate 'pair? #t)]
-               [else
-                #f])))))
+    (cond
+      [(all-set? (prim-mask abort-op)
+                 (primref-flags pr))
+       (primref-name->predicate 'bottom? #t)]
+      [else
+       (let ([signatures (primref-signatures pr)])
+         (and (>= (length signatures) 1)
+              (let* ([results (map signature->result-predicate signatures)]
+                     [first-result (car results)])
+                (and (andmap (lambda (result) ;TODO: Get a better union of multiple results
+                              (check-predicate-implies? result first-result))
+                             results)
+                     first-result))))]))
+
+  (define (signature->argument-predicate signature pos)
+    (let* ([arguments (car signature)]
+           [dots (memq '... arguments)])
+      (cond
+        [(and dots (null? (cdr dots)))
+         (cond
+           [(< pos (- (length arguments) 2))
+            (primref-name->predicate
+             (symbol-append (list-ref arguments pos) '?)
+             #t)]
+           [else
+            (primref-name->predicate 
+              (symbol-append (list-ref arguments (- (length arguments) 2)) '?)
+              #t)])]
+         [dots #f] ;FIXME
+         [else
+          (cond
+            [(< pos (length arguments))
+             (let ([argument (list-ref arguments pos)])
+               (if (pair? argument)
+                   (primref-name->predicate 'pair? #t)
+                   (primref-name->predicate (symbol-append argument '?) #t)))]
+            [else
+             (primref-name->predicate 'bottom? #t)])])))
 
   (define (primref->argument-predicate pr pos)
     (let ([signatures (primref-signatures pr)])
-      (and (= (length signatures) 1)  ;TODO: Extend to multiple signatures
-           (let* ([signature (car signatures)]
-                  [arguments (car signature)])
-               (cond
-                 [(let ([dots (memq '... arguments)])
-                    (and dots (null? (cdr dots))))
-                  (cond
-                    [(< pos (- (length arguments) 2))
-                     (primref-name->predicate
-                      (symbol-append (list-ref arguments pos) '?)
-                      #f)]
-                    [else
-                     (primref-name->predicate 
-                      (symbol-append (list-ref arguments (- (length arguments) 2)) '?)
-                      #f)])]
-                 [(not (memq '... arguments))
-                  (cond
-                    [(< pos (length arguments))
-                     (let ([argument (list-ref arguments pos)])
-                       (if (pair? argument)
-                           (primref-name->predicate 'pair? #f)
-                           (primref-name->predicate (symbol-append argument '?) #f)))]
-                    [else
-                      #f])]
-                  [else #f])))))
+      (and (>= (length signatures) 1)
+           (let* ([vals (map (lambda (signature)
+                              (signature->argument-predicate signature pos))
+                             signatures)]
+                  [first-val (car vals)])
+             (and (andmap (lambda (val) ;TODO: Get a better union of multiple vals
+                            (check-predicate-implies? val first-val))
+                          vals)
+                  first-val)))))
 
   (define-pass cptypes : Lsrc (ir ctxt ret types t-types f-types) -> Lsrc ()
     (Expr : Expr (ir) -> Expr ()
@@ -421,8 +442,12 @@ Notes:
                  (predicates-merge! f-types f-types2 '())]
                 [(check-predicate-implies? (unbox r3) false-rec)
                  (predicates-merge! t-types t-types2 '())])
-              (when (eq? (unbox r2) (unbox r3)) #;FIXME
-                (set-box! ret (unbox r2)))
+              (cond #;FIXME
+                [(check-predicate-implies? (unbox r2) (unbox r3)) 
+                 (set-box! ret (unbox r3))]
+                [(check-predicate-implies? (unbox r3) (unbox r2)) 
+                 (set-box! ret (unbox r2))]
+                [else (void)])
               `(if ,e1 ,e2 ,e3))]))]
       [(set! ,maybe-src ,x ,[cptypes : e 'value (box #f) types #f #f -> e])
        (set-box! ret void-rec)
