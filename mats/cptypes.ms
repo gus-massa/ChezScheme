@@ -180,48 +180,188 @@
     '(lambda (x) (when (vector? x) #t)))
 )
 
-(define (test-chain l)
+(define (test-chain/preamble/self preamble check-self? l)
   (let loop ([l l])
     (if (null? l)
         #t
-        (and (let loop ([t (cdr l)])
+        (and (or (not check-self?)
+                 (cptypes-equivalent-expansion?
+                   `(let ()
+                      ,preamble
+                      (lambda (x) (when (,(car l) x) (,(car l) x))))
+                   `(let ()
+                      ,preamble
+                      (lambda (x) (when (,(car l) x) #t)))))
+             (let loop ([t (cdr l)])
                (if (null? t)
                    #t
                    (and (cptypes-equivalent-expansion?
-                          `(lambda (x) (when (,(car l) x) (,(car t) x)))
-                          `(lambda (x) (when (,(car l) x) #t)))
+                          `(let ()
+                             ,preamble
+                             (lambda (x) (when (,(car l) x) (,(car t) x))))
+                          `(let ()
+                             ,preamble
+                             (lambda (x) (when (,(car l) x) #t))))
                         (not (cptypes-equivalent-expansion?
-                               `(lambda (x) (when (,(car t) x) (,(car l) x)))
-                               `(lambda (x) (when (,(car t) x) #t))))
+                               `(let ()
+                                  ,preamble
+                                  (lambda (x) (when (,(car t) x) (,(car l) x))))
+                               `(let ()
+                                  ,preamble
+                                  (lambda (x) (when (,(car t) x) #t)))))
                         (loop (cdr t)))))
              (loop (cdr l))))))
 
-(define (test-disjoint l)
+(define (test-chain l)
+  (test-chain/preamble/self '(void) #t l))
+
+(define (test-chain* l)
+  (test-chain/preamble/self '(void) #f l))
+
+(define (test-chain/preamble preamble l)
+  (test-chain/preamble/self preamble #t l))
+
+(define (test-chain*/preamble l)
+  (test-chain/preamble/self preamble #f l))
+
+(define (test-disjoint/preamble/self preamble check-self? l)
   (let loop ([l l])
     (if (null? l)
         #t
-       (and (cptypes-equivalent-expansion?
-              `(lambda (x) (when (,(car l) x) (,(car l) x)))
-              `(lambda (x) (when (,(car l) x) #t)))
+       (and (or (not check-self?)
+                (cptypes-equivalent-expansion?
+                  `(let ()
+                     ,preamble
+                     (lambda (x) (when (,(car l) x) (,(car l) x))))
+                  `(let ()
+                     ,preamble
+                     (lambda (x) (when (,(car l) x) #t)))))
             (let loop ([t (cdr l)])
               (if (null? t)
                   #t
                   (and (cptypes-equivalent-expansion?
-                         `(lambda (x) (when (,(car l) x) (,(car t) x)))
-                         `(lambda (x) (when (,(car l) x) #f)))
+                         `(let ()
+                            ,preamble
+                            (lambda (x) (when (,(car l) x) (,(car t) x))))
+                         `(let ()
+                            ,preamble
+                            (lambda (x) (when (,(car l) x) #f))))
                        (cptypes-equivalent-expansion?
-                         `(lambda (x) (when (,(car t) x) (,(car l) x)))
-                         `(lambda (x) (when (,(car t) x) #f)))
+                         `(let ()
+                           ,preamble
+                           (lambda (x) (when (,(car t) x) (,(car l) x))))
+                         `(let ()
+                            ,preamble
+                            (lambda (x) (when (,(car t) x) #f))))
                        (loop (cdr t)))))
             (loop (cdr l))))))
+
+(define (test-disjoint l)
+  (test-disjoint/preamble/self '(void) #t l))
+
+(define (test-disjoint* l)
+  (test-disjoint/preamble/self '(void) #f l))
+
+(define (test-disjoint/preamble preamble l)
+  (test-disjoint/preamble/self preamble #t l))
+
+(define (test-disjoint*/preamble preamble l)
+  (test-disjoint/preamble/self preamble #f l))
 
 (mat cptypes-type-implies?
   (test-chain '((lambda (x) (eq? x 0)) fixnum? integer? number?))
   (test-chain '(gensym? symbol?))
   (test-chain '(not boolean?))
   (test-chain '((lambda (x) (eq? x #t)) boolean?))
-  (test-chain '(record-type-descriptor? record?))
-  (test-disjoint '(pair? box? record? number? vector? string? bytevector? fxvector? symbol? char? boolean? null?))
-  (test-disjoint '(pair? box? record-type-descriptor? integer? gensym? not))
+  (test-chain* '(record? #3%$record?))
+  #;(test-chain '(record-type-descriptor? #3%$record?))
+  (test-disjoint '(pair? box? #3%$record? number? vector? string? bytevector? fxvector? symbol? char? boolean? null? (lambda (x) (eq? x (void)))))
+  (test-disjoint '(pair? box? integer? gensym? not))
   (test-disjoint '(pair? box? fixnum? (lambda (x) (eq? x #t))))
+  (test-disjoint* '(list? record? vector?))
+  (not (test-disjoint* '(list? null?)))
+  (not (test-disjoint* '(list? pair?)))
+)
+
+; use a gensym to make expansions equivalent
+(define my-rec (gensym "my-rec"))
+(mat cptypes-type-record?
+  ; define-record
+  (cptypes-equivalent-expansion?
+    `(let () (define-record ,my-rec (a)) (lambda (x) (display (my-rec-a x)) (my-rec? x)))
+    `(let () (define-record ,my-rec (a)) (lambda (x) (display (my-rec-a x)) #t)))
+  (cptypes-equivalent-expansion?
+    `(let () (define-record ,my-rec (a)) (lambda (x) (set-my-rec-a! x 0) (my-rec? x)))
+    `(let () (define-record ,my-rec (a)) (lambda (x) (set-my-rec-a! x 0) #t)))
+  (cptypes-equivalent-expansion?
+    `(let () (define-record ,my-rec (a)) (let ([x (make-my-rec 0)]) (display (list x x)) (my-rec? x)))
+    `(let () (define-record ,my-rec (a)) (let ([x (make-my-rec 0)]) (display (list x x)) #t)))
+  (cptypes-equivalent-expansion?
+    `(let () (define-record ,my-rec (a)) (let ([x (make-my-rec 0)]) (display (list x x)) (if x 1 2)))
+    `(let () (define-record ,my-rec (a)) (let ([x (make-my-rec 0)]) (display (list x x)) (if #t 1 2))))
+
+  (test-chain/preamble `(define-record ,my-rec (a)) '(my-rec? #3%$record?))
+  (test-chain/preamble `(begin
+                          (define-record ,my-rec (a))
+                          (define-record ,(gensym "sub-rec") ,my-rec (b)))
+                       '(sub-rec? my-rec? #3%$record?))
+  (test-disjoint/preamble `(define-record ,my-rec (a)) '(my-rec? pair? null? not number?))
+  (test-disjoint/preamble `(begin
+                            (define-record ,my-rec (a))
+                            (define-record ,(gensym "other-rec") (a)))
+                       '(my-rec? other-rec?))
+
+  ; define-record-type
+  (cptypes-equivalent-expansion?
+    `(let () (define-record-type ,my-rec (fields a)) (lambda (x) (display (my-rec-a x)) (my-rec? x)))
+    `(let () (define-record-type ,my-rec (fields a)) (lambda (x) (display (my-rec-a x)) #t)))
+  (cptypes-equivalent-expansion?
+    `(let () (define-record-type ,my-rec (fields (mutable a))) (lambda (x) (my-rec-a-set! x 0) (my-rec? x)))
+    `(let () (define-record-type ,my-rec (fields (mutable a))) (lambda (x) (my-rec-a-set! x 0) #t)))
+  (cptypes-equivalent-expansion?
+    `(let () (define-record-type ,my-rec (fields a)) (let ([x (make-my-rec 0)]) (display (list x x)) (my-rec? x)))
+    `(let () (define-record-type ,my-rec (fields a)) (let ([x (make-my-rec 0)]) (display (list x x)) #t)))
+  (cptypes-equivalent-expansion?
+    `(let () (define-record-type ,my-rec (fields a)) (let ([x (make-my-rec 0)]) (display (list x x)) (if x 1 2)))
+    `(let () (define-record-type ,my-rec (fields a)) (let ([x (make-my-rec 0)]) (display (list x x)) (if #t 1 2))))
+
+  (test-chain/preamble `(define-record-type ,my-rec (fields a)) '(my-rec? #3%$record?))
+  (test-chain/preamble `(begin
+                          (define-record-type ,my-rec (fields a))
+                          (define-record-type ,(gensym "sub-rec") (parent ,my-rec) (fields b)))
+                       '(sub-rec? my-rec? #3%$record?))
+  (test-disjoint/preamble `(define-record-type ,my-rec (fields a)) '(my-rec? pair? null? not number?))
+  (test-disjoint/preamble `(begin
+                            (define-record-type ,my-rec (fields a))
+                            (define-record-type ,(gensym "other-rec") (fields a)))
+                       '(my-rec? other-rec?))
+
+  ; define-record-type (sealed #t)
+  (cptypes-equivalent-expansion?
+    `(let () (define-record-type ,my-rec (fields a) (sealed #t)) (lambda (x) (display (my-rec-a x)) (my-rec? x)))
+    `(let () (define-record-type ,my-rec (fields a) (sealed #t)) (lambda (x) (display (my-rec-a x)) #t)))
+  (cptypes-equivalent-expansion?
+    `(let () (define-record-type ,my-rec (fields (mutable a)) (sealed #t)) (lambda (x) (my-rec-a-set! x 0) (my-rec? x)))
+    `(let () (define-record-type ,my-rec (fields (mutable a)) (sealed #t)) (lambda (x) (my-rec-a-set! x 0) #t)))
+  (cptypes-equivalent-expansion?
+    `(let () (define-record-type ,my-rec (fields a) (sealed #t)) (let ([x (make-my-rec 0)]) (display (list x x)) (my-rec? x)))
+    `(let () (define-record-type ,my-rec (fields a) (sealed #t)) (let ([x (make-my-rec 0)]) (display (list x x)) #t)))
+  (cptypes-equivalent-expansion?
+    `(let () (define-record-type ,my-rec (fields a) (sealed #t)) (let ([x (make-my-rec 0)]) (display (list x x)) (if x 1 2)))
+    `(let () (define-record-type ,my-rec (fields a) (sealed #t)) (let ([x (make-my-rec 0)]) (display (list x x)) (if #t 1 2))))
+
+  (test-chain/preamble `(define-record-type ,my-rec (fields a) (sealed #t)) '(my-rec? #3%$record?))
+  (test-chain/preamble `(begin
+                          (define-record-type ,my-rec (fields a))
+                          (define-record-type ,(gensym "sub-rec") (parent ,my-rec) (fields b) (sealed #t)))
+                       '(sub-rec? my-rec? #3%$record?))
+  (test-disjoint/preamble `(define-record-type ,my-rec (fields a) (sealed #t)) '(my-rec? pair? null? not number?))
+  (test-disjoint/preamble `(begin
+                            (define-record-type ,my-rec (fields a) (sealed #t))
+                            (define-record-type ,(gensym "other-rec") (fields a) (sealed #t)))
+                       '(my-rec? other-rec?))
+  (test-disjoint/preamble `(begin
+                            (define-record-type ,my-rec (fields a) (sealed #t))
+                            (define-record-type ,(gensym "other-rec") (fields a)))
+                       '(my-rec? other-rec?))
 )

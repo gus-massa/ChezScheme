@@ -45,8 +45,9 @@ Notes:
               * a nanopass-quoted value that is okay-to-copy?, like
                 `(quote 0) `(quote 5) `(quote #t) `(quote '())
                 (this includes `(quote <record-type-descriptor?>))
-              * TODO: add something to indicate that x is a record of that type
-              * TODO: add something to indicate that x is a procedure to 
+              * a [normal] list ($record? <rtd>) to signal that it's a record
+                of type <rtd>
+              * TODO: add something to indicate that x is a procedure to
                       create/setter/getter/predicate of a record of that type
               * TODO: add primitives, probably the nanopass version of pr
               * TODO: add procedure? and perhaps some minimal signature for them
@@ -188,10 +189,11 @@ Notes:
           (bwp-object? obj)
           (eq? obj '#6=#6#)
           ($unbound-object? obj)
-          (record-type-descriptor? obj))))
+          (record-type-descriptor? obj)))) ;removed in datum->predicate
 
   (define (datum->predicate d ir)
     (cond
+      [(#3%$record? d) '$record?] ;check first to avoid doube representation of rtd
       [(okay-to-copy? d) ir]
       [(pair? d) 'pair?]
       [(box? d) 'box?]
@@ -201,10 +203,29 @@ Notes:
       [(fxvector? d) 'fxvector?]
       [else #f]))
 
+  (define (rtd->record-predicate rtd)
+    (cond
+      [(record-type-descriptor? rtd)
+       (list '$record? rtd)]
+      [(Lsrc? rtd) 
+       (nanopass-case (Lsrc Expr) rtd
+         [(quote ,d) 
+          (cond
+            [(record-type-descriptor? d)
+             (list '$record? d)]
+            [else '$record?])]
+         [(record-type ,rtd ,e) 
+          (cond
+            [(record-type-descriptor? rtd)
+             (list '$record? rtd)]
+            [else '$record?])]
+         [else '$record?])]
+      [else '$record?]))
+
   (define (primref-name->predicate name extend?)
     (case name
       [(pair? box?
-        record? record-type-descriptor?
+        $record?
         fixnum? integer? number?
         vector? string? bytevector? fxvector?
         gensym? symbol?
@@ -227,14 +248,16 @@ Notes:
       #;[fxvector-empty? empty-fxvector-rec]
       [else (and extend? ;---------------------------------------------------
             (case name
+              [(record?) '$record?]
+              [(list?) 'null-or-pair?] ;fake-predicate
               [(bit? length? ufixnum? pfixnum?) 'fixnum?]
               [(sint? uint? exact-integer?) 'integer?] ;perhaps use exact-integer? 
               [(uinteger?) 'integer?]
               [(flonum? rational? real? cflonum?) 'number?]
               [else #f]))]))
 
-  (define (primref->predicate pr)
-    (primref-name->predicate (primref-name pr) #f))
+  (define (primref->predicate pr extend?)
+    (primref-name->predicate (primref-name pr) extend?))
 
   (define (check-constant-is? x pred?)
     (nanopass-case (Lsrc Expr) x
@@ -259,8 +282,16 @@ Notes:
                        [(quote ,d2) (eqv? d1 d2)] #;CHECK ;eq?/eqv?/equal?
                        [else #f])]
                     [else #f]))
+             (and (pair? x) (pair? (cdr x)) (eq? (car x) '$record?)
+                  (pair? y) (pair? (cdr y)) (eq? (car y) '$record?)
+                  (let loop ([x (cadr x)] [y (cadr y)])
+                    (or (eqv? x y)
+                        (let ([xp (record-type-parent x)])
+                          (and xp (loop xp y))))))
              (eq? x 'bottom?)
              (cond
+               [(eq? y 'null-or-pair?) (or (check-constant-is? x null?)
+                                           (eq? x 'pair?))] 
                #;[(eq? y 'pair?) (check-constant-is? x pair?)] 
                #;[(eq? y 'box?) (check-constant-is? x box?)] 
                [(eq? y 'fixnum?) (check-constant-is? x target-fixnum?)]
@@ -279,9 +310,8 @@ Notes:
                [(eq? y 'char?) (check-constant-is? x char?)] 
                [(eq? y 'boolean?) (or (check-constant-is? x not)
                                       (check-constant-is? x (lambda (x) (eq? x #t))))]
-               [(eq? y 'record?) (or (eq? x 'record-type-descriptor?)
-                                     (check-constant-is? x record?))] 
-               [(eq? y 'record-type-descriptor?) (check-constant-is? x record-type-descriptor?)] 
+               [(eq? y '$record?) (or (check-constant-is? x #3%$record?)
+                                      (and (pair? x) (eq? (car x) '$record?)))]
                [(eq? y 'ptr?) #t]
                [else #f]))))
 
@@ -314,12 +344,13 @@ Notes:
       [else
        (let ([signatures (primref-signatures pr)])
          (and (>= (length signatures) 1)
-              (let* ([results (map signature->result-predicate signatures)]
-                     [first-result (car results)])
-                (and (andmap (lambda (result) ;TODO: Get a better union of multiple results
-                              (check-predicate-implies? result first-result))
-                             results)
-                     first-result))))]))
+              (let ([results (map signature->result-predicate signatures)])
+                (ormap (lambda (one-result)
+                         (and (andmap (lambda (result) ;TODO: Get a better union of multiple results
+                                        (check-predicate-implies? result one-result))
+                                      results)
+                              one-result))
+                       results))))]))
 
   (define (signature->argument-predicate signature pos)
     (let* ([arguments (car signature)]
@@ -349,14 +380,15 @@ Notes:
   (define (primref->argument-predicate pr pos)
     (let ([signatures (primref-signatures pr)])
       (and (>= (length signatures) 1)
-           (let* ([vals (map (lambda (signature)
+           (let ([vals (map (lambda (signature)
                               (signature->argument-predicate signature pos))
-                             signatures)]
-                  [first-val (car vals)])
-             (and (andmap (lambda (val) ;TODO: Get a better union of multiple vals
-                            (check-predicate-implies? val first-val))
-                          vals)
-                  first-val)))))
+                            signatures)])
+             (ormap (lambda (one-val)
+                      (and (andmap (lambda (val) ;TODO: Get a better union of multiple vals
+                                     (check-predicate-implies? val one-val))
+                                   vals)
+                           one-val))
+                    vals)))))
 
   (define-pass cptypes : Lsrc (ir ctxt ret types t-types f-types) -> Lsrc ()
     (Expr : Expr (ir) -> Expr ()
@@ -486,8 +518,8 @@ Notes:
                  (predicates-add/ref! t-types e2 (unbox r1))
                  ir]))]
            [(and (fx= (length e*) 1)
-                 (primref->predicate pr))
-            (let ([pred (primref->predicate pr)]
+                 (primref->predicate pr #f))
+            (let ([pred (primref->predicate pr #f)]
                   [var (unbox (car r*))])
               (cond
                 [(check-predicate-implies? var pred) 
@@ -496,7 +528,65 @@ Notes:
                 [(check-predicate-implies-not? var pred) 
                  (set-box! ret false-rec)
                  (make-seq ctxt (car e*) false-rec)]
-                [else  
+                [else
+                 (predicates-add/ref! t-types (car e*) pred)
+                 ir]))]
+           [(and (fx= (length e*) 1)
+                 (primref->predicate pr #t))
+            (let ([pred (primref->predicate pr #t)]
+                  [var (unbox (car r*))])
+              (cond
+                ; no (pred? <ext-pred?>) => #t
+                #;[(check-predicate-implies? var pred) 
+                   (set-box! ret true-rec)
+                   (make-seq ctxt (car e*) true-rec)]
+                [(check-predicate-implies-not? var pred) 
+                 (set-box! ret false-rec)
+                 (make-seq ctxt (car e*) false-rec)]
+                [else
+                 (predicates-add/ref! t-types (car e*) pred)
+                 ir]))]
+           [(and (fx>= (length e*) 1)
+                 (eq? (primref-name pr) 'record))
+            (set-box! ret (rtd->record-predicate (car e*)))
+            ir]
+           [(and (fx= (length e*) 2)
+                 (eq? (primref-name pr) 'record?))
+            (let ([pred (rtd->record-predicate (cadr e*))]
+                  [var (unbox (car r*))])
+              #;(when (eq? pred '$record?)
+                   (newline)
+                   (newline)
+                   (display (cadr e*))
+                   (newline)
+                   (newline)) 
+              (cond
+                [(check-predicate-implies-not? var pred)
+                 (set-box! ret false-rec)
+                 (make-seq ctxt (make-seq 'effect (car e*) (cadr e*)) false-rec)]
+                [(and (not (eq? pred '$record?)) ; assume that the only extension is '$record?
+                      (check-predicate-implies? var pred))
+                 (set-box! ret true-rec)
+                 (make-seq ctxt (make-seq 'effect (car e*) (cadr e*)) true-rec)]
+                [else
+                 (predicates-add/ref! t-types (car e*) pred)
+                 ir]))]
+           [(and (fx= (length e*) 2)
+                 (eq? (primref-name pr) '$sealed-record?))
+            (let ([pred (rtd->record-predicate (cadr e*))]
+                  [var (unbox (car r*))])
+              (cond
+                [(check-predicate-implies-not? var pred)
+                 (set-box! ret false-rec)
+                 (make-seq ctxt (make-seq 'effect (car e*) (cadr e*)) false-rec)]
+                [(and (not (eq? pred '$record?)) ; assume that the only extension is '$record?
+                      (pair? pred) (pair? (cdr pred)) (eq? (car pred) '$record?) ;just in case
+                      (record-type-descriptor? (cadr pred))
+                      (record-type-sealed? (cadr pred))
+                      (check-predicate-implies? var pred))
+                 (set-box! ret true-rec)
+                 (make-seq ctxt (make-seq 'effect (car e*) (cadr e*)) true-rec)]
+                [else
                  (predicates-add/ref! t-types (car e*) pred)
                  ir]))]
            [else
@@ -595,8 +685,10 @@ Notes:
               [e* (map (lambda (e t) (cptypes e 'value (box #f) t #f #f)) e* t*)])
          (predicates-merge! types t-rtd-expr '())
          (for-each (lambda (t) (predicates-merge! types t '())) t*)
+         (set-box! ret (rtd->record-predicate rtd))
          `(record ,rtd ,rtd-expr ,e* ...))]
       [(record-ref ,rtd ,type ,index ,[cptypes : e 'value (box #f) types #f #f -> e])
+       (predicates-add/ref! types e (rtd->record-predicate rtd))
        `(record-ref ,rtd ,type ,index ,e)]
       [(record-set! ,rtd ,type ,index ,e1 , e2) ;can be reordered?
        (let* ([t1 (predicates-copy types)]
@@ -605,6 +697,7 @@ Notes:
               [e2 (cptypes e2 'value (box #f) t2 #f #f)])
        (predicates-merge! types t1 '())
        (predicates-merge! types t2 '())
+       (predicates-add/ref! types e1 (rtd->record-predicate rtd))
        `(record-set! ,rtd ,type ,index ,e1 ,e2))]
       [(record-type ,rtd ,[cptypes : e 'value (box #f) types  #f #f -> e])
        `(record-type ,rtd ,e)]
