@@ -46,26 +46,26 @@
     '(pair? (cons 1 2)) 
     #t)
   (cptypes-equivalent-expansion?
-    '(lambda (x) (vector-length x) (vector? x))
-    '(lambda (x) (vector-length x) #t))
+    '(lambda (x) (vector-set! x 0 0) (vector? x))
+    '(lambda (x) (vector-set! x 0 0) #t))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (vector-length x) (box? x))
-    '(lambda (x) (vector-length x) #f))
+    '(lambda (x) (vector-set! x 0 0) (box? x))
+    '(lambda (x) (vector-set! x 0 0) #f))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (if (zero? (vector-length x)) (newline) (void)) (vector? x))
-    '(lambda (x) (if (zero? (vector-length x)) (newline) (void)) #t))
+    '(lambda (x) (if (zero? (vector-ref x 0)) (newline) (void)) (vector? x))
+    '(lambda (x) (if (zero? (vector-ref x 0)) (newline) (void)) #t))
   (not (cptypes-equivalent-expansion?
-         '(lambda (x) (if (zero? (random 2)) (vector-length x) (void)) (vector? x))
-         '(lambda (x) (if (zero? (random 2)) (vector-length x) (void)) #t)))
+         '(lambda (x) (if (zero? (random 2)) (vector-set! x 0 0) (void)) (vector? x))
+         '(lambda (x) (if (zero? (random 2)) (vector-set! x 0 0) (void)) #t)))
   (not (cptypes-equivalent-expansion?
-         '(lambda (x) (if (zero? (random 2)) (void) (vector-length x)) (vector? x))
-         '(lambda (x) (if (zero? (random 2)) (void) (vector-length x)) #t)))
+         '(lambda (x) (if (zero? (random 2)) (void) (vector-set! x 0 0)) (vector? x))
+         '(lambda (x) (if (zero? (random 2)) (void) (vector-set! x 0 0)) #t)))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (vector-length x) (if x (newline) (void)))
-    '(lambda (x) (vector-length x) (if #t (newline) (void))))
+    '(lambda (x) (vector-set! x 0 0) (if x (newline) (void)))
+    '(lambda (x) (vector-set! x 0 0) (if #t (newline) (void))))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (vector-length x) (if (vector? x) (newline) (void)))
-    '(lambda (x) (vector-length x) (if #t (newline) (void))))
+    '(lambda (x) (vector-set! x 0 0) (if (vector? x) (newline) (void)))
+    '(lambda (x) (vector-set! x 0 0) (if #t (newline) (void))))
   (cptypes-equivalent-expansion?
     '(lambda (x) (when (vector? x) (if x (newline) (void))))
     '(lambda (x) (when (vector? x) (if #t (newline) (void)))))
@@ -73,39 +73,39 @@
          '(lambda (x) (when (boolean? x) (if x (newline) (void))))
          '(lambda (x) (when (boolean? x) (if #t (newline) (void))))))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (vector-length x) (if (zero? (random 2)) (vector? x) (void)))
-    '(lambda (x) (vector-length x) (if (zero? (random 2)) #t (void))))
+    '(lambda (x) (vector-set! x 0 0) (if (zero? (random 2)) (vector? x) (void)))
+    '(lambda (x) (vector-set! x 0 0) (if (zero? (random 2)) #t (void))))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (vector-length x) (if (zero? (random 2)) (void) (vector? x)))
-    '(lambda (x) (vector-length x) (if (zero? (random 2)) (void) #t)))
+    '(lambda (x) (vector-set! x 0 0) (if (zero? (random 2)) (void) (vector? x)))
+    '(lambda (x) (vector-set! x 0 0) (if (zero? (random 2)) (void) #t)))
   (cptypes-equivalent-expansion?
-    '(lambda (x y) (vector-length x) (set! y (vector? x)))
-    '(lambda (x y) (vector-length x) (set! y #t)))
+    '(lambda (x y) (vector-set! x 0 0) (set! y (vector? x)))
+    '(lambda (x y) (vector-set! x 0 0) (set! y #t)))
   (cptypes-equivalent-expansion?
-    '(lambda (x y) (set! y (vector-length x)) (vector? x))
-    '(lambda (x y) (set! y (vector-length x)) #t))
+    '(lambda (x y) (set! y (vector-ref x 0)) (list (vector? x) y))
+    '(lambda (x y) (set! y (vector-ref x 0)) (list #t y)))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (vector-length x) (let ([y (random 7)]) (list (vector? x) y y)))
-    '(lambda (x) (vector-length x) (let ([y (random 7)]) (list #t y y))))
+    '(lambda (x) (vector-set! x 0 0) (let ([y (random 7)]) (list (vector? x) y y)))
+    '(lambda (x) (vector-set! x 0 0) (let ([y (random 7)]) (list #t y y))))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (vector-length x) (let ([y (vector? x)]) (list (random 7) y y)))
-    '(lambda (x) (vector-length x) (let ([y #t]) (list (random 7) y y))))
+    '(lambda (x) (vector-set! x 0 0) (let ([y (vector? x)]) (list (random 7) y y)))
+    '(lambda (x) (vector-set! x 0 0) (let ([y #t]) (list (random 7) y y))))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (let ([y (vector-length x)]) (list (vector? x) y y)))
-    '(lambda (x) (let ([y (vector-length x)]) (list #t y y))))
+    '(lambda (x) (let ([y (vector-ref x 0)]) (list (vector? x) y y)))
+    '(lambda (x) (let ([y (vector-ref x 0)]) (list #t y y))))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (let ([y (vector-length x)])
+    '(lambda (x) (let ([y (vector-ref x 0)])
                    (let ([z (vector? x)])
                      (list y y z z))))
-    '(lambda (x) (let ([y (vector-length x)])
+    '(lambda (x) (let ([y (vector-ref x 0)])
                    (let ([z #t])
                      (list y y z z)))))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (let ([y (vector-length x)]) (display (list y y))) (vector? x))
-    '(lambda (x) (let ([y (vector-length x)]) (display (list y y))) #t))
+    '(lambda (x) (let ([y (vector-ref x 0)]) (display (list y y))) (vector? x))
+    '(lambda (x) (let ([y (vector-ref x 0)]) (display (list y y))) #t))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (let ([y (random 7)]) (display (list (vector-length x) y y))) (vector? x))
-    '(lambda (x) (let ([y (random 7)]) (display (list (vector-length x) y y))) #t))
+    '(lambda (x) (let ([y (random 7)]) (display (list (vector-ref x 0) y y))) (vector? x))
+    '(lambda (x) (let ([y (random 7)]) (display (list (vector-ref x 0) y y))) #t))
   (cptypes-equivalent-expansion?
     '(let ([y (vector 1 2 3)]) (display (list (vector? y) y y)))
     '(let ([y (vector 1 2 3)]) (display (list #t y y))))
@@ -158,11 +158,11 @@
          '(begin (if (box? (box 0)) (void) (error 'who "msg")) (display 1))
          '(begin (if (box? (box 0)) (void) (error 'who "msg")) (display -1))))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (if (zero? (random 2)) (vector-length x) (error 'who "msg")) (vector? x))
-    '(lambda (x) (if (zero? (random 2)) (vector-length x) (error 'who "msg")) #t))
+    '(lambda (x) (if (zero? (random 2)) (vector-set! x 0 0) (error 'who "msg")) (vector? x))
+    '(lambda (x) (if (zero? (random 2)) (vector-set! x 0 0) (error 'who "msg")) #t))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (if (zero? (random 2)) (error 'who "msg") (vector-length x)) (vector? x))
-    '(lambda (x) (if (zero? (random 2)) (error 'who "msg") (vector-length x)) #t))
+    '(lambda (x) (if (zero? (random 2)) (error 'who "msg") (vector-set! x 0 0)) (vector? x))
+    '(lambda (x) (if (zero? (random 2)) (error 'who "msg") (vector-set! x 0 0)) #t))
   (cptypes-equivalent-expansion?
     '(begin (if (zero? (random 2)) (error 'who "msg") (error 'who "other")) (display 1))
     '(begin (if (zero? (random 2)) (error 'who "msg") (error 'who "other")) (display -1)))
