@@ -225,12 +225,13 @@ Notes:
       #;[string-empty? empty-string-rec]
       #;[bytevector-empty? empty-bytevector-rec]
       #;[fxvector-empty? empty-fxvector-rec]
-      [(not extend?) #f] ;---------------------------------------------------
-      [(bit? length? ufixnum? pfixnum?) 'fixnum?]
-      [(sint? uint? exact-integer?) 'integer?] ;perhaps use exact-integer? 
-      [(uinteger?) 'integer?]
-      [(flonum? rational? real? cflonum?) 'number?]
-      [else #f]))
+      [else (and extend? ;---------------------------------------------------
+            (case name
+              [(bit? length? ufixnum? pfixnum?) 'fixnum?]
+              [(sint? uint? exact-integer?) 'integer?] ;perhaps use exact-integer? 
+              [(uinteger?) 'integer?]
+              [(flonum? rational? real? cflonum?) 'number?]
+              [else #f]))]))
 
   (define (primref->predicate pr)
     (primref-name->predicate (primref-name pr) #f))
