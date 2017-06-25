@@ -52,6 +52,15 @@
     '(lambda (x) (vector-set! x 0 0) (box? x))
     '(lambda (x) (vector-set! x 0 0) #f))
   (cptypes-equivalent-expansion?
+    '(lambda (x) (if (vector-ref x 0) (newline) (void)) (vector? x))
+    '(lambda (x) (if (vector-ref x 0) (newline) (void)) #t))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (if (vector-ref x 0) (vector? x) (void)))
+    '(lambda (x) (if (vector-ref x 0) #t (void))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (if (vector-ref x 0) (void) (vector? x)))
+    '(lambda (x) (if (vector-ref x 0) (void) #t)))
+  (cptypes-equivalent-expansion?
     '(lambda (x) (if (zero? (vector-ref x 0)) (newline) (void)) (vector? x))
     '(lambda (x) (if (zero? (vector-ref x 0)) (newline) (void)) #t))
   (not (cptypes-equivalent-expansion?
@@ -270,6 +279,7 @@
 
 (mat cptypes-type-implies?
   (test-chain '((lambda (x) (eq? x 0)) fixnum? integer? number?))
+  (test-chain '((lambda (x) (eq? 0 x)) fixnum? integer? number?))
   (test-chain '(gensym? symbol?))
   (test-chain '(not boolean?))
   (test-chain '((lambda (x) (eq? x #t)) boolean?))
@@ -278,6 +288,7 @@
   (test-disjoint '(pair? box? #3%$record? number? vector? string? bytevector? fxvector? symbol? char? boolean? null? (lambda (x) (eq? x (void)))))
   (test-disjoint '(pair? box? integer? gensym? not))
   (test-disjoint '(pair? box? fixnum? (lambda (x) (eq? x #t))))
+  (test-disjoint '(pair? box? fixnum? (lambda (x) (eq? #t x))))
   (test-disjoint* '(list? record? vector?))
   (not (test-disjoint* '(list? null?)))
   (not (test-disjoint* '(list? pair?)))

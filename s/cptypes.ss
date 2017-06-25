@@ -19,22 +19,25 @@ Notes:
  - (cptypes ir ctxt ret types t-types f-types)
    ir: expression to be optimized
    <return value>: the optimized expression
-   
+
    ctxt: 'effect 'value 'app/let
          (TODO: replace 'app/let with an app record like in cp0)
-   ret: a box, to return the type of the result of the expression
    types: a "predicates" record. Actually just a box with an assoc, but let's
-          pretend it's something fancy and manipulate it using only the API.
-          It has the associations of prelex to types that were discovered before
-          and it is possible to add more association that will be used in the
-          following expressions.
+          pretend it's something fancy and immutable, and manipulate it using
+          only the API.
+          It has the associations of prelex to types that were discovered before.
           (box ((x . 'pair?) (y . 'vector) (z . `(quote 0))))
-   t-types: like types, but it also has the types that should be used in case
-            the expression is not a #f, so these types will be used in the 
-            "then" branch of an if.
-            It may be #f to signal that we don't care. This is automatically
-            handle in the "predicates" function.
-   f-types: idem for the "else" branch. (if x (something) (here x is #f))
+   ret [out]: a box to return the type of the result of the expression
+   n-types [out]: a box to return the types to be used in the next expression.
+                  Add the new discovered predicates to types.
+                  If left blank (box #f) it will be automaticaly filled with a
+                  copy of types.
+   t-types [out]: a box to return the types to be used in case the expression
+                  is not #t, to be used in the "then" branch of an if.
+                  Fill only when you fill ret.
+                  If left blank (box #f) it will be automaticaly filled with a
+                  copy of n-types (that may be an automatic copy of types).
+   f-types [out]: idem for the "else" branch. (if x (something) (here x is #f))
 
 
  - predicate: (each one, not the record)
@@ -44,24 +47,24 @@ Notes:
                  signal that there is an error)
               * a nanopass-quoted value that is okay-to-copy?, like
                 `(quote 0) `(quote 5) `(quote #t) `(quote '())
-                (this includes `(quote <record-type-descriptor?>))
+                (this doesn't includes `(quote <record-type-descriptor?>))
               * a [normal] list ($record? <rtd>) to signal that it's a record
                 of type <rtd>
               * TODO: add something to indicate that x is a procedure to
                       create/setter/getter/predicate of a record of that type
               * TODO: add primitives, probably the nanopass version of pr
               * TODO: add procedure? and perhaps some minimal signature for them
-                  
-              
+
+
  - most of the time I'm using eq? and eqv? as if they were equivalent.
    this is not a good idea.
- - most FIXME are not bugs but sites were the code can be improved. 
- - most CHECK are parts where I'm not sure that it is correct. 
- 
+ - most FIXME are not bugs but sites were the code can be improved.
+ - most CHECK are parts where I'm not sure that it is correct.
+
 |#
 
-(define $cptypes
-(let ()
+[define $cptypes
+[let ()
   (import (nanopass))
   (include "base-lang.ss")
 
@@ -107,7 +110,7 @@ Notes:
         [else #f]
         #;[else ($oops who "unrecognized record ~s" e)]))
 
-    ; FIXME: Drop discardable operations in e1. 
+    ; FIXME: Drop discardable operations in e1.
     (define make-seq
       ; ensures that the right subtree of the output seq is not a seq if the
       ; second argument is similarly constrained, to facilitate result-exp
@@ -139,24 +142,33 @@ Notes:
     (and types
          (box (unbox types))))
 
-  (define (predicates-add! types x type)
-    (when (and types
-               type
-               (not (eq? type 'ptr?))
-               (not (prelex-was-assigned x))
-               (not (assoc x (unbox types))))
-      (set-box! types (cons (cons x type) (unbox types)))))
+  (define (predicates-add types x type)
+    (cond
+      [(and types
+            x
+            type
+            (not (eq? type 'ptr?))
+            (not (prelex-was-assigned x))
+            (not (assoc x (unbox types))))
+       (box (cons (cons x type) (unbox types)))]
+      [else types]))
 
-  (define (predicates-merge! types from skipped)
-    (when (and types from)
-      (let ([base (unbox types)]) ;try to avoid common part
-        (let loop ([from (unbox from)])
-          (when (and (not (null? from))
-                     (not (eq? from base)))
-            (let ([a (car from)])
-              (unless (member (car a) skipped)
-                (predicates-add! types (car a) (cdr a))))
-            (loop (cdr from)))))))
+  (define (predicates-merge types from skipped)
+    (cond
+      [(and types from)
+       (let ([base (unbox types)]) ;try to avoid common part
+         (let loop ([types types] [from (unbox from)])
+           (cond
+             [(and (not (null? from))
+                   (not (eq? from base)))
+              (let ([a (car from)])
+                (cond
+                  [(member (car a) skipped)
+                   (loop types (cdr from))]
+                  [else
+                   (loop (predicates-add types (car a) (cdr a)) (cdr from))]))]
+              [else types])))]
+      [else types]))
 
   (define (predicates-lookup types x)
     (and types
@@ -164,12 +176,11 @@ Notes:
          (let ([a (assoc x (unbox types))])
            (and a (cdr a)))))
 
-  (define (predicates-add/ref! types r pred)
+  (define (predicates-add/ref types r pred)
     (nanopass-case (Lsrc Expr) r
       [(ref ,maybe-src ,x)
-       (predicates-add! types x pred)]
-      [else
-       (void)]))
+       (predicates-add types x pred)]
+      [else types]))
 
   (define okay-to-copy?
     (lambda (obj)
@@ -207,14 +218,14 @@ Notes:
     (cond
       [(record-type-descriptor? rtd)
        (list '$record? rtd)]
-      [(Lsrc? rtd) 
+      [(Lsrc? rtd)
        (nanopass-case (Lsrc Expr) rtd
-         [(quote ,d) 
+         [(quote ,d)
           (cond
             [(record-type-descriptor? d)
              (list '$record? d)]
             [else '$record?])]
-         [(record-type ,rtd ,e) 
+         [(record-type ,rtd ,e)
           (cond
             [(record-type-descriptor? rtd)
              (list '$record? rtd)]
@@ -240,7 +251,7 @@ Notes:
       [null? null-rec]
       [eof-object? eof-rec]
       [bwp-object? bwp-rec]
-      #;[$?self?? "'#6=#6#"-rec] ;???
+      #;[$black-hole? "'#7=#7#"-rec] ;???
       #;[$unbound-object? unbound-rec] ;???
       #;[vector-empty? empty-vector-rec]
       #;[string-empty? empty-string-rec]
@@ -251,7 +262,7 @@ Notes:
               [(record?) '$record?]
               [(list?) 'null-or-pair?] ;fake-predicate
               [(bit? length? ufixnum? pfixnum?) 'fixnum?]
-              [(sint? uint? exact-integer?) 'integer?] ;perhaps use exact-integer? 
+              [(sint? uint? exact-integer?) 'integer?] ;perhaps use exact-integer?
               [(uinteger?) 'integer?]
               [(flonum? rational? real? cflonum?) 'number?]
               [else #f]))]))
@@ -277,7 +288,7 @@ Notes:
              (and (Lsrc? x)
                   (Lsrc? y)
                   (nanopass-case (Lsrc Expr) x
-                    [(quote ,d1) 
+                    [(quote ,d1)
                      (nanopass-case (Lsrc Expr) y
                        [(quote ,d2) (eqv? d1 d2)] #;CHECK ;eq?/eqv?/equal?
                        [else #f])]
@@ -291,23 +302,23 @@ Notes:
              (eq? x 'bottom?)
              (cond
                [(eq? y 'null-or-pair?) (or (check-constant-is? x null?)
-                                           (eq? x 'pair?))] 
-               #;[(eq? y 'pair?) (check-constant-is? x pair?)] 
-               #;[(eq? y 'box?) (check-constant-is? x box?)] 
+                                           (eq? x 'pair?))]
+               #;[(eq? y 'pair?) (check-constant-is? x pair?)]
+               #;[(eq? y 'box?) (check-constant-is? x box?)]
                [(eq? y 'fixnum?) (check-constant-is? x target-fixnum?)]
                [(eq? y 'integer?) (or (eq? x 'fixnum?)
                                       (check-constant-is? x integer?))]
                [(eq? y 'number?) (or (eq? x 'fixnum?)
                                      (eq? x 'integer?)
                                      (check-constant-is? x number?))]
-               [(eq? y 'vector?) (check-constant-is? x vector?)] 
+               [(eq? y 'vector?) (check-constant-is? x vector?)]
                [(eq? y 'string?) (check-constant-is? x string?)]
                [(eq? y 'bytevector?) (check-constant-is? x bytevector?)]
-               [(eq? y 'fxvector?) (check-constant-is? x fxvector?)] 
-               [(eq? y 'gensym?) (check-constant-is? x gensym?)] 
+               [(eq? y 'fxvector?) (check-constant-is? x fxvector?)]
+               [(eq? y 'gensym?) (check-constant-is? x gensym?)]
                [(eq? y 'symbol?) (or (eq? x 'gensym?)
-                                     (check-constant-is? x symbol?))] 
-               [(eq? y 'char?) (check-constant-is? x char?)] 
+                                     (check-constant-is? x symbol?))]
+               [(eq? y 'char?) (check-constant-is? x char?)]
                [(eq? y 'boolean?) (or (check-constant-is? x not)
                                       (check-constant-is? x (lambda (x) (eq? x #t))))]
                [(eq? y '$record?) (or (check-constant-is? x #3%$record?)
@@ -324,7 +335,7 @@ Notes:
 
   (define (symbol-append . x)
     (string->symbol
-     (apply string-append (map symbol->string x))))  
+     (apply string-append (map symbol->string x))))
 
   (define (signature->result-predicate signature)
     (let ([result (cadr signature)])
@@ -363,7 +374,7 @@ Notes:
              (symbol-append (list-ref arguments pos) '?)
              #t)]
            [else
-            (primref-name->predicate 
+            (primref-name->predicate
               (symbol-append (list-ref arguments (- (length arguments) 2)) '?)
               #t)])]
          [dots #f] ;FIXME
@@ -390,8 +401,8 @@ Notes:
                            one-val))
                     vals)))))
 
-  (define-pass cptypes : Lsrc (ir ctxt ret types t-types f-types) -> Lsrc ()
-    (Expr : Expr (ir) -> Expr ()
+  [define-pass cptypes/raw : Lsrc (ir ctxt types ret n-types t-types f-types) -> Lsrc ()
+    [Expr : Expr (ir) -> Expr ()
       [(quote ,d)
        (set-box! ret (datum->predicate d ir))
        ir]
@@ -408,7 +419,7 @@ Notes:
                 false-rec]
               [else
                (set-box! ret t)
-               (predicates-add! f-types x false-rec)
+               (set-box! f-types (predicates-add/ref types ir false-rec))
                ir]))]
          [else
            (let ([t (predicates-lookup types x)])
@@ -421,85 +432,88 @@ Notes:
                [else ir]))])]
       [(seq ,e1 ,e2)
        (let* ([r1 (box #f)]
-              [e1 (cptypes e1 'effect r1 types #f #f)])
-         (cond 
+              [n-types1 (box #f)]
+              [e1 (cptypes e1 'effect types r1 n-types1 (box #f) (box #f))])
+         (cond
            [(check-predicate-implies? (unbox r1) 'bottom?)
             (set-box! ret (unbox r1))
             e1]
-           [else 
-            (let ([e2 (cptypes e2 ctxt ret types t-types f-types)])
+           [else
+            (let ([e2 (cptypes e2 ctxt (unbox n-types1) ret n-types t-types f-types)])
               (make-seq ctxt e1 e2))]))]
       [(if ,e1 ,e2 ,e3)
        (let* ([r1 (box #f)]
-              [t-types1 (predicates-copy types)]
-              [f-types1 (predicates-copy types)]
-              [e1 (cptypes e1 'test r1 types t-types1 f-types1)])
+              [n-types1 (box #f)]
+              [t-types1 (box #f)]
+              [f-types1 (box #f)]
+              [e1 (cptypes e1 'test types r1 n-types1 t-types1 f-types1)])
          (cond
            [(check-predicate-implies? (unbox r1) 'bottom?) ;check bottom first
             (set! ret (unbox r1))
             e1]
            [(check-predicate-implies-not? (unbox r1) false-rec)
-            (predicates-merge! t-types t-types1 '())
-            (predicates-merge! f-types t-types1 '())
-            (let ([e2 (cptypes e2 ctxt ret t-types1 t-types f-types)])
+            (let ([e2 (cptypes e2 ctxt (unbox t-types1) ret n-types t-types f-types)])
               (make-seq ctxt e1 e2))]
            [(check-predicate-implies? (unbox r1) false-rec)
-            (predicates-merge! t-types f-types1 '())
-            (predicates-merge! f-types f-types1 '())
-            (let ([e3 (cptypes e3 ctxt ret f-types1 t-types f-types)])
+            (let ([e3 (cptypes e3 ctxt (unbox f-types1) ret n-types t-types f-types)])
               (make-seq ctxt e1 e3))]
            [else
             (let* ([r2 (box #f)]
-                   [t-types2 (predicates-copy t-types1)]
-                   [f-types2 (predicates-copy t-types1)]
-                   [e2 (cptypes e2 ctxt r2 t-types1 t-types2 f-types2)]
+                   [n-types2 (box #f)]
+                   [t-types2 (box #f)]
+                   [f-types2 (box #f)]
+                   [e2 (cptypes e2 ctxt (unbox t-types1) r2 n-types2 t-types2 f-types2)]
                    [r3 (box #f)]
-                   [t-types3 (predicates-copy f-types1)]
-                   [f-types3 (predicates-copy f-types1)]
-                   [e3 (cptypes e3 ctxt r3 f-types1 t-types3 f-types3)])
+                   [n-types3 (box #f)]
+                   [t-types3 (box #f)]
+                   [f-types3 (box #f)]
+                   [e3 (cptypes e3 ctxt (unbox f-types1) r3 n-types3 t-types3 f-types3)])
+              (set-box! n-types (unbox n-types1))
+              (set-box! t-types (unbox n-types1))
+              (set-box! f-types (unbox n-types1))
               (cond
                 [(check-predicate-implies? (unbox r2) 'bottom?) ;check bottom first
-                 (predicates-merge! t-types t-types3 '())
-                 (predicates-merge! f-types f-types3 '())
-                 (predicates-merge! types f-types1 '())]
+                 (set-box! t-types (unbox t-types3))
+                 (set-box! f-types (unbox f-types3))
+                 (set-box! ret (unbox r3))
+                 (set-box! n-types (unbox n-types3))]
                 [(check-predicate-implies-not? (unbox r2) false-rec)
-                 (predicates-merge! f-types f-types3 '())]
+                 (set-box! f-types (predicates-merge (unbox f-types) (unbox f-types3) '()))]
                 [(check-predicate-implies? (unbox r2) false-rec)
-                 (predicates-merge! t-types t-types3 '())])
+                 (set-box! t-types (predicates-merge (unbox t-types) (unbox t-types3) '()))])
               (cond
                 [(check-predicate-implies? (unbox r3) 'bottom?) ;check bottom first
-                 (predicates-merge! t-types t-types2 '())
-                 (predicates-merge! f-types f-types2 '())
-                 (predicates-merge! types t-types1 '())]
+                 (set-box! t-types (unbox t-types2))
+                 (set-box! f-types (unbox f-types2))
+                 (set-box! ret (unbox r2))
+                 (set-box! n-types (unbox n-types2))]
                 [(check-predicate-implies-not? (unbox r3) false-rec)
-                 (predicates-merge! f-types f-types2 '())]
+                 (set-box! f-types (predicates-merge (unbox f-types) (unbox f-types2) '()))]
                 [(check-predicate-implies? (unbox r3) false-rec)
-                 (predicates-merge! t-types t-types2 '())])
+                 (set-box! t-types (predicates-merge (unbox t-types) (unbox t-types2) '()))])
               (cond #;FIXME
-                [(check-predicate-implies? (unbox r2) (unbox r3)) 
+                [(check-predicate-implies? (unbox r2) (unbox r3))
                  (set-box! ret (unbox r3))]
-                [(check-predicate-implies? (unbox r3) (unbox r2)) 
+                [(check-predicate-implies? (unbox r3) (unbox r2))
                  (set-box! ret (unbox r2))]
                 [else (void)])
               `(if ,e1 ,e2 ,e3))]))]
-      [(set! ,maybe-src ,x ,[cptypes : e 'value (box #f) types #f #f -> e])
+      [(set! ,maybe-src ,x ,[cptypes : e 'value types (box #f) n-types (box #f) (box #f) -> e])
        (set-box! ret void-rec)
        `(set! ,maybe-src ,x ,e)]
       [(call ,preinfo ,pr ,e* ...)
        (let* ([r* (map (lambda (e) (box #f)) e*)]
-              [t* (map (lambda (e) (predicates-copy types)) e*)]
-              [e* (map (lambda (e r t) (cptypes e 'value r t #f #f)) e* r* t*)]
+              [n-t* (map (lambda (e) (box #f)) e*)]
+              [e* (map (lambda (e r n-t) (cptypes e 'value types r n-t (box #f) (box #f)))
+                       e* r* n-t*)]
               [ir `(call ,preinfo ,pr ,e* ...)])
-         (for-each (lambda (t) (predicates-merge! types t '())) t*)
+         (set-box! n-types types)
+         (for-each (lambda (n-t) (set-box! n-types (predicates-merge (unbox n-types) (unbox n-t) '()))) n-t*)
          (set-box! ret (primref->result-predicate pr))
          (for-each (lambda (e n)
                      (let ([pred (primref->argument-predicate pr n)])
-                       (predicates-add/ref! types e pred)
-                       (predicates-add/ref! t-types e pred)
-                       (predicates-add/ref! f-types e pred)))
-                   e*
-                   (enumerate e*))
-         (primref->argument-predicate pr 0)
+                       (set-box! n-types (predicates-add/ref (unbox n-types) e pred))))
+                   e* (enumerate e*))
          (cond
            [(and (fx= (length e*) 2)
                  (or (eq? (primref-name pr) 'eq?)
@@ -514,22 +528,23 @@ Notes:
                  (set-box! ret false-rec)
                  (make-seq ctxt (make-seq 'effect e1 e2) false-rec)]
                 [else
-                 (predicates-add/ref! t-types e1 (unbox r2))
-                 (predicates-add/ref! t-types e2 (unbox r1))
+                 (set-box! t-types (or (unbox n-types) types))
+                 (set-box! t-types (predicates-add/ref (unbox t-types) e1 (unbox r2)))
+                 (set-box! t-types (predicates-add/ref (unbox t-types) e2 (unbox r1)))
                  ir]))]
            [(and (fx= (length e*) 1)
                  (primref->predicate pr #f))
             (let ([pred (primref->predicate pr #f)]
                   [var (unbox (car r*))])
               (cond
-                [(check-predicate-implies? var pred) 
+                [(check-predicate-implies? var pred)
                  (set-box! ret true-rec)
                  (make-seq ctxt (car e*) true-rec)]
-                [(check-predicate-implies-not? var pred) 
+                [(check-predicate-implies-not? var pred)
                  (set-box! ret false-rec)
                  (make-seq ctxt (car e*) false-rec)]
                 [else
-                 (predicates-add/ref! t-types (car e*) pred)
+                 (set-box! t-types (predicates-add/ref (or (unbox n-types) types) (car e*) pred))
                  ir]))]
            [(and (fx= (length e*) 1)
                  (primref->predicate pr #t))
@@ -537,14 +552,11 @@ Notes:
                   [var (unbox (car r*))])
               (cond
                 ; no (pred? <ext-pred?>) => #t
-                #;[(check-predicate-implies? var pred) 
-                   (set-box! ret true-rec)
-                   (make-seq ctxt (car e*) true-rec)]
-                [(check-predicate-implies-not? var pred) 
+                [(check-predicate-implies-not? var pred)
                  (set-box! ret false-rec)
                  (make-seq ctxt (car e*) false-rec)]
                 [else
-                 (predicates-add/ref! t-types (car e*) pred)
+                 (set-box! t-types (predicates-add/ref (or (unbox n-types) types) (car e*) pred))
                  ir]))]
            [(and (fx>= (length e*) 1)
                  (eq? (primref-name pr) 'record))
@@ -559,7 +571,7 @@ Notes:
                    (newline)
                    (display (cadr e*))
                    (newline)
-                   (newline)) 
+                   (newline))
               (cond
                 [(check-predicate-implies-not? var pred)
                  (set-box! ret false-rec)
@@ -569,7 +581,7 @@ Notes:
                  (set-box! ret true-rec)
                  (make-seq ctxt (make-seq 'effect (car e*) (cadr e*)) true-rec)]
                 [else
-                 (predicates-add/ref! t-types (car e*) pred)
+                 (set-box! t-types (predicates-add/ref (or (unbox n-types) types) (car e*) pred))
                  ir]))]
            [(and (fx= (length e*) 2)
                  (eq? (primref-name pr) '$sealed-record?))
@@ -587,135 +599,151 @@ Notes:
                  (set-box! ret true-rec)
                  (make-seq ctxt (make-seq 'effect (car e*) (cadr e*)) true-rec)]
                 [else
-                 (predicates-add/ref! t-types (car e*) pred)
+                 (set-box! t-types (predicates-add/ref (or (unbox n-types) types) (car e*) pred))
                  ir]))]
            [else
             ir]))]
-      [(case-lambda ,preinfo ,cl* ...)
-       (let* ([r* (map (lambda (cl) (box #f)) cl*)]
-              [t* (map (lambda (cl) (predicates-copy types)) cl*)]
-              [t-t* (map (lambda (cl) (predicates-copy t-types)) cl*)]
-              [f-t* (map (lambda (cl) (predicates-copy f-types)) cl*)]
-              [x** (map (lambda (cl)
-                         (nanopass-case (Lsrc CaseLambdaClause) cl
-                           [(clause (,x* ...) ,interface ,body) x*]))
-                       cl*)]
-              [cl* (map (lambda (cl r t t-t f-t)
-                         (nanopass-case (Lsrc CaseLambdaClause) cl
-                           [(clause (,x* ...) ,interface ,body)
-                            (let ([body (cptypes body 'value r t t-t f-t)]) #;FIXME
-                              (with-output-language (Lsrc CaseLambdaClause)
-                                `(clause (,x* ...) ,interface ,body)))]))
-                       cl* r* t* t-t* f-t*)])
+      [(case-lambda ,preinfo (clause (,x* ...) ,interface ,body))
+       (let* ([r (box #f)]
+              [n-t (box #f)]
+              [t-t (box #f)]
+              [f-t (box #f)]
+              [body (cptypes body 'value types r n-t t-t f-t)]) #;FIXME
          (context-case ctxt
            [(app/let) #;FIXME ;also for apply / call-with-values ?
-            (when (fx= (length cl*) 1)
-              (set-box! ret (unbox (car r*)))
-              (predicates-merge! types (car t*) (car x**))
-              (predicates-merge! t-types (car t-t*) (car x**))
-              (predicates-merge! f-types (car f-t*) (car x**)))]
+              (set-box! ret (unbox r))
+              (set-box! n-types (unbox n-t))
+              (set-box! t-types (unbox t-t))
+              (set-box! f-types (unbox f-t))]
             [else (void)])
+         `(case-lambda ,preinfo (clause (,x* ...) ,interface ,body)))]
+      [(case-lambda ,preinfo ,cl* ...)
+       (let* ([cl* (map (lambda (cl)
+                         (nanopass-case (Lsrc CaseLambdaClause) cl
+                           [(clause (,x* ...) ,interface ,body)
+                            (let ([body (cptypes body 'value types (box #f) (box #f) (box #f) (box #f))]) #;FIXME
+                              (with-output-language (Lsrc CaseLambdaClause)
+                                `(clause (,x* ...) ,interface ,body)))]))
+                        cl*)])
          `(case-lambda ,preinfo ,cl* ...))]
       [(call ,preinfo ,e0 ,e* ...)
        (let* ([r* (map (lambda (e) (box #f)) e*)]
-              [t* (map (lambda (e) (predicates-copy types)) e*)]
-              [e* (map (lambda (e r t) (cptypes e 'value r t #f #f)) e* r* t*)]
+              [n-t* (map (lambda (e) (box #f)) e*)]
+              [e* (map (lambda (e r n-t) (cptypes e 'value types r n-t (box #f) (box #f))) e* r* n-t*)]
               [e0 (nanopass-case (Lsrc Expr) e0
                     [(case-lambda ,preinfo (clause (,x* ...) ,interface ,body)) ;move this part to case-lambda
                      (guard (fx= interface (length x*)))
-                     (for-each (lambda (t) (predicates-merge! types t '())) t*)
-                     (let ([subtypes (predicates-copy types)])
-                       (for-each (lambda (x r) (predicates-add! subtypes x (unbox r))) x* r*)
-                       (let* ([t-subtypes (predicates-copy subtypes)]
-                              [f-subtypes (predicates-copy subtypes)]
-                              [e0 (cptypes e0 'app/let ret subtypes t-subtypes f-subtypes)])  #;FIXME
-                         (predicates-merge! types subtypes x*)
-                         (predicates-merge! t-types t-subtypes x*)
-                         (predicates-merge! f-types f-subtypes x*)
+                     (set-box! n-types types)
+                     (for-each (lambda (n-t) (set-box! n-types (predicates-merge (unbox n-types) (unbox n-t) '()))) n-t*)
+                     (let ([subtypes (box (unbox n-types))])
+                       (for-each (lambda (x r) (set-box! subtypes (predicates-add (unbox subtypes) x (unbox r)))) x* r*)
+                       (let* ([n-subtypes (box #f)]
+                              [t-subtypes (box #f)]
+                              [f-subtypes (box #f)]
+                              [e0 (cptypes e0 'app/let (unbox subtypes) ret n-subtypes t-subtypes f-subtypes)]) #;FIXME
+                         (set-box! n-types (predicates-merge (unbox n-types) (unbox n-subtypes) x*))
+                         (set-box! t-types (predicates-merge (unbox n-types) (unbox t-subtypes) x*))
+                         (set-box! f-types (predicates-merge (unbox n-types) (unbox f-subtypes) x*))
                          e0))]
                     [(case-lambda ,preinfo ,cl* ...)
-                     (for-each (lambda (t) (predicates-merge! types t '())) t*)
-                     (cptypes e0 'app/let ret types t-types f-types)]  #;FIXME
+                     (set-box! n-types types)
+                     (for-each (lambda (n-t) (set-box! n-types (predicates-merge (unbox n-types) (unbox n-t) '()))) n-t*)
+                     (cptypes e0 'value (unbox n-types) (box #f) (box #f) (box #f) (box #f))]  #;FIXME
                     [else
                       (let* ([r0 (box #f)]
-                             [t0 (predicates-copy types)]
-                             [e0 (cptypes e0 'value r0 t0 #f #f)]) #;FIXME
-                        (for-each (lambda (t) (predicates-merge! types t '())) t*)
-                        (predicates-merge! types t0 '())
+                             [n-t0 (box #f)]
+                             [e0 (cptypes e0 'value types r0 n-t0 (box #f) (box #f))]) #;FIXME
+                        (set-box! n-types (unbox n-t0))
+                        (for-each (lambda (n-t) (set-box! n-types (predicates-merge (unbox n-types) (unbox n-t) '()))) n-t*)
                         e0)])])
          `(call ,preinfo ,e0 ,e* ...))]
-      [(letrec ([,x* ,e*] ...) ,body)
+      [(letrec ((,x* ,e*) ...) ,body)
        (let* ([r* (map (lambda (e) (box #f)) e*)]
-              [t* (map (lambda (e) (predicates-copy types)) e*)]
-              [e* (map (lambda (e r t) (cptypes e 'value r t #f #f)) e* r* t*)])
-         (for-each (lambda (t) (predicates-merge! types t x*)) t*)
-         (let ([subtypes (predicates-copy types)])
-           (for-each (lambda (x r) (predicates-add! subtypes x (unbox r))) x* r*)
-           (let* ([t-subtypes (predicates-copy subtypes)]
-                  [f-subtypes (predicates-copy subtypes)]
-                  [body (cptypes body ctxt ret subtypes t-subtypes f-subtypes)])
-             (predicates-merge! types subtypes x*)
-             (predicates-merge! t-types t-subtypes x*)
-             (predicates-merge! f-types f-subtypes x*)
-             `(letrec ([,x* ,e*] ...) ,body))))]
+              [n-t* (map (lambda (e) (box #f)) e*)]
+              [e* (map (lambda (e r n-t) (cptypes e 'value types r n-t (box #f) (box #f))) e* r* n-t*)]
+              [subtypes (box types)])
+         (for-each (lambda (n-t) (set-box! subtypes (predicates-merge (unbox subtypes) (unbox n-t) '()))) n-t*)
+         (for-each (lambda (x r) (set-box! subtypes (predicates-add (unbox subtypes) x (unbox r)))) x* r*)
+         (let* ([n-subtypes (box #f)]
+                [t-subtypes (box #f)]
+                [f-subtypes (box #f)]
+                #;[body (cptypes body ctxt (unbox subtypes) ret n-subtypes t-subtypes f-subtypes)])
+           (set-box! n-types (predicates-merge types (unbox n-subtypes) x*))
+           (set-box! t-types (predicates-merge (unbox n-types) (unbox t-subtypes) x*))
+           (set-box! f-types (predicates-merge (unbox n-types) (unbox f-subtypes) x*))
+           `(letrec ((,x* ,e*) ...) ,body)))]
       [(letrec* ([,x* ,e*] ...) ,body)
-       (let* ([subtypes (predicates-copy types)]
-              [r* (map (lambda (e) (box #f)) e*)]
-              [e* (map (lambda (x e r)
-                         (let ([e (cptypes e 'value r subtypes #f #f)])
-                           (predicates-add! subtypes x (unbox r))
-                           e))
-                    x* e* r*)]
-              [t-subtypes (predicates-copy subtypes)]
-              [f-subtypes (predicates-copy subtypes)]
-              [body (cptypes body ctxt ret subtypes t-subtypes f-subtypes)])
-         (predicates-merge! types subtypes x*)
-         (predicates-merge! t-types t-subtypes x*)
-         (predicates-merge! f-types f-subtypes x*)
+       (let* ([subtypes (box types)]
+              [e* (let loop ([x* x*] [e* e*] [rev-e* '()])
+                    (if (null? x*)
+                        (reverse rev-e*)
+                        (let* ([n-subtypes (box #f)]
+                               [r (box #f)]
+                               [e (cptypes (car e*) 'value (unbox subtypes) r n-subtypes (box #f) (box #f))])
+                           (set-box! subtypes (predicates-add (unbox n-subtypes) (car x*) (unbox r)))
+                           (loop (cdr x*) (cdr e*) (cons e rev-e*)))))]
+              [n-subtypes (box #f)]
+              [t-subtypes (box #f)]
+              [f-subtypes (box #f)]
+              [body (cptypes body ctxt (unbox subtypes) ret n-subtypes t-subtypes f-subtypes)])
+         (set-box! n-types (predicates-merge types (unbox n-subtypes) x*))
+         (set-box! t-types (predicates-merge (unbox n-types) (unbox t-subtypes) x*))
+         (set-box! f-types (predicates-merge (unbox n-types) (unbox f-subtypes) x*))
          `(letrec* ([,x* ,e*] ...) ,body))]
       [,pr ir]
-      [(foreign ,conv ,name ,[cptypes : e 'value (box #f) types #f #f -> e] (,arg-type* ...) ,result-type)
+      [(foreign ,conv ,name ,[cptypes : e 'value types (box #f) n-types (box #f) (box #f) -> e] (,arg-type* ...) ,result-type)
        `(foreign ,conv ,name ,e (,arg-type* ...) ,result-type)]
-      [(fcallable ,conv ,[cptypes : e 'value (box #f) types #f #f -> e] (,arg-type* ...) ,result-type)
+      [(fcallable ,conv ,[cptypes : e 'value types (box #f) n-types (box #f) (box #f) -> e] (,arg-type* ...) ,result-type)
        `(fcallable ,conv ,e (,arg-type* ...) ,result-type)]
       [(record ,rtd ,rtd-expr ,e* ...)
-       (let* ([t-rtd-expr (predicates-copy types)]
-              [rtd-expr (cptypes rtd-expr 'value (box #f) t-rtd-expr #f #f)]
-              [t* (map (lambda (e) (predicates-copy types)) e*)]
-              [e* (map (lambda (e t) (cptypes e 'value (box #f) t #f #f)) e* t*)])
-         (predicates-merge! types t-rtd-expr '())
-         (for-each (lambda (t) (predicates-merge! types t '())) t*)
+       (let* ([n-t-rtd-expr (box #f)]
+              [rtd-expr (cptypes rtd-expr 'value types (box #f) n-t-rtd-expr (box #f) (box #f))]
+              [n-t* (map (lambda (e) (box #f)) e*)]
+              [e* (map (lambda (e n-t) (cptypes e 'value types (box #f) n-t (box #f) (box #f))) e* n-t*)])
+         (set-box! n-types (unbox n-t-rtd-expr))
+         (for-each (lambda (n-t) (set-box! n-types (predicates-merge (unbox n-types) (unbox n-t) '()))) n-t*)
          (set-box! ret (rtd->record-predicate rtd))
          `(record ,rtd ,rtd-expr ,e* ...))]
-      [(record-ref ,rtd ,type ,index ,[cptypes : e 'value (box #f) types #f #f -> e])
-       (predicates-add/ref! types e (rtd->record-predicate rtd))
+      [(record-ref ,rtd ,type ,index ,[cptypes : e 'value types (box #f) n-types (box #f) (box #f) -> e])
+       (set-box! n-types (predicates-add/ref types e (rtd->record-predicate rtd)))
        `(record-ref ,rtd ,type ,index ,e)]
       [(record-set! ,rtd ,type ,index ,e1 , e2) ;can be reordered?
-       (let* ([t1 (predicates-copy types)]
-              [t2 (predicates-copy types)]
-              [e1 (cptypes e1 'value (box #f) t1 #f #f)]
-              [e2 (cptypes e2 'value (box #f) t2 #f #f)])
-       (predicates-merge! types t1 '())
-       (predicates-merge! types t2 '())
-       (predicates-add/ref! types e1 (rtd->record-predicate rtd))
-       `(record-set! ,rtd ,type ,index ,e1 ,e2))]
-      [(record-type ,rtd ,[cptypes : e 'value (box #f) types  #f #f -> e])
+       (let* ([n-t1 (box #f)]
+              [n-t2 (box #f)]
+              [e1 (cptypes e1 'value types (box #f) n-t1 (box #f) (box #f))]
+              [e2 (cptypes e2 'value types (box #f) n-t2 (box #f) (box #f))])
+         (set-box! n-types types)
+         (set-box! n-types (predicates-merge (unbox n-types) (unbox n-t1) '()))
+         (set-box! n-types (predicates-merge (unbox n-types) (unbox n-t2) '()))
+         (set-box! n-types (predicates-add/ref (unbox n-types) e1 (rtd->record-predicate rtd)))
+         `(record-set! ,rtd ,type ,index ,e1 ,e2))]
+      [(record-type ,rtd ,[cptypes : e 'value types (box #f) n-types (box #f) (box #f) -> e])
        `(record-type ,rtd ,e)]
-      [(record-cd ,rcd ,rtd-expr ,[cptypes : e 'value (box #f) types #f #f -> e])
+      [(record-cd ,rcd ,rtd-expr ,[cptypes : e 'value types (box #f) n-types (box #f) (box #f) -> e])
        `(record-cd ,rcd ,rtd-expr ,e)]
       [(immutable-list (,e* ...) ,e)
-       (let* ([t* (map (lambda (e) (predicates-copy types)) e*)]
-              [e* (map (lambda (e t) (cptypes e 'value (box #f) t #f #f)) e* t*)]
-              [e (cptypes e 'value ret types #f #f)]) #;CHECK
+       (let* ([e* (map (lambda (e) (cptypes e 'value types (box #f) (box #f) (box #f) (box #f))) e*)]
+              [e (cptypes e 'value types ret n-types (box #f) (box #f))]) #;CHECK
          `(immutable-list (,e*  ...) ,e))]
       [(moi) ir]
       [(pariah) ir]
-      [(cte-optimization-loc ,box0 ,[cptypes : e 'value (box #f) types  #f #f -> e]) ;don't shadow box
+      [(cte-optimization-loc ,box0 ,[cptypes : e 'value types (box #f) n-types (box #f) (box #f) -> e]) ;don't shadow box
        `(cte-optimization-loc ,box0 ,e)]
       [(cpvalid-defer ,e) (sorry! who "cpvalid leaked a cpvalid-defer form ~s" ir)]
       [(profile ,src) ir]
-      [else ($oops who "unrecognized record ~s" ir)]))
+      #;[else ir]
+      [else ($oops who "unrecognized record ~s" ir)]]]
 
-(lambda (x)
-  (cptypes x 'value (box #f) (predicates-new) #f #f))
-))
+  (define (cptypes ir ctxt types ret n-types t-types f-types)
+    (let ([ir (cptypes/raw ir ctxt types ret n-types t-types f-types)])
+      (unless (unbox n-types)
+        (set-box! n-types types))
+      (unless (unbox t-types)
+        (set-box! t-types (unbox n-types)))
+      (unless (unbox f-types)
+        (set-box! f-types (unbox n-types)))
+      ir))
+
+  (lambda (x)
+    (cptypes x 'value (predicates-new) (box #f) (box #f) (box #f) (box #f)))
+]]
