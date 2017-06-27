@@ -187,6 +187,12 @@
   (cptypes-equivalent-expansion?
     '(lambda (x) (when (vector? x) (vector? x)))
     '(lambda (x) (when (vector? x) #t)))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (procedure? x) (procedure? x)))
+    '(lambda (x) (when (procedure? x) #t)))
+  #;(cptypes-equivalent-expansion? ; Disabled until lookup is more efficient
+    '(lambda (f) (f) (procedure? f))
+    '(lambda (f) (f) #t))
 )
 
 (define (test-chain/preamble/self preamble check-self? l)
@@ -284,8 +290,12 @@
   (test-chain '(not boolean?))
   (test-chain '((lambda (x) (eq? x #t)) boolean?))
   (test-chain* '(record? #3%$record?))
+  (test-chain* '((lambda (x) (eq? x car)) procedure?))
   #;(test-chain '(record-type-descriptor? #3%$record?))
-  (test-disjoint '(pair? box? #3%$record? number? vector? string? bytevector? fxvector? symbol? char? boolean? null? (lambda (x) (eq? x (void)))))
+  (test-disjoint '(pair? box? #3%$record? number?
+                   vector? string? bytevector? fxvector? symbol?
+                   char? boolean? null? (lambda (x) (eq? x (void)))
+                   eof-object? bwp-object? procedure?))
   (test-disjoint '(pair? box? integer? gensym? not))
   (test-disjoint '(pair? box? fixnum? (lambda (x) (eq? x #t))))
   (test-disjoint '(pair? box? fixnum? (lambda (x) (eq? #t x))))

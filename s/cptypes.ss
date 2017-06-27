@@ -20,8 +20,7 @@ Notes:
    ir: expression to be optimized
    <return value>: the optimized expression
 
-   ctxt: 'effect 'value 'app/let
-         (TODO: replace 'app/let with an app record like in cp0)
+   ctxt: 'effect 'test 'value
    types: a "pred-env" record. It's just a record with a single field (like a box),
           with an assoc inside, the idea is to replace the implementation later,
           so use it only with the API. It's immutable.
@@ -49,16 +48,12 @@ Notes:
                 (this doesn't includes `(quote <record-type-descriptor?>))
               * a [normal] list ($record? <rtd>) to signal that it's a record
                 of type <rtd>
-              * TODO: add something to indicate that x is a procedure to
-                      create/setter/getter/predicate of a record of that type
-              * TODO: add primitives, probably the nanopass version of pr
-              * TODO: add procedure? and perhaps some minimal signature for them
+              * TODO?: add something to indicate that x is a procedure to
+                       create/setter/getter/predicate of a record of that type
 
-
- - most of the time I'm using eq? and eqv? as if they were equivalent.
-   this is not a good idea.
- - most FIXME are not bugs but sites were the code can be improved.
- - most CHECK are parts where I'm not sure that it is correct.
+ - Primitives are marked as procedures, without distinction.
+ - Most of the time I'm using eq? and eqv? as if they were equivalent.
+   I assume that the differences are hidden by unespecified behaivior.
 
 |#
 
@@ -66,25 +61,6 @@ Notes:
 [let ()
   (import (nanopass))
   (include "base-lang.ss")
-
-  (define-syntax context-case
-    (lambda (x)
-      (define predicate
-        (lambda (type)
-          (syntax-case type (app)
-            [app #'app?]
-            [_ (with-syntax ([type type])
-                 #'(lambda (x) (eq? x 'type)))])))
-      (syntax-case x (else)
-        [(_ ctxt-exp [(type ...) e1 e2 ...] more ...)
-         (with-syntax (((pred ...) (map predicate #'(type ...))))
-           #'(let ((ctxt ctxt-exp))
-               (if (or (pred ctxt) ...)
-                   (begin e1 e2 ...)
-                   (context-case ctxt more ...))))]
-        [(_ ctxt-exp [else e1 e2 ...]) #'(begin e1 e2 ...)]
-        [(_ ctxt-exp)
-         #'($oops 'cptypes-internal "unexpected context ~s" ctxt-exp)])))
 
   (with-output-language (Lsrc Expr)
     (define void-rec `(quote ,(void)))
@@ -98,7 +74,7 @@ Notes:
     (define eof-rec `(quote #!eof))
     (define bwp-rec `(quote #!bwp))
 
-    (define (simple? e) ;FIXME
+    (define (simple? e) ; Simplified version copied from cp0. TODO: copy the rest.
       (nanopass-case (Lsrc Expr) e
         [(quote ,d) #t]
         [(ref ,maybe-src ,x) #t]
@@ -109,7 +85,7 @@ Notes:
         [else #f]
         #;[else ($oops who "unrecognized record ~s" e)]))
 
-    ; FIXME: Drop discardable operations in e1.
+    ; TODO: Remove discardable operations in e1. (vectox (f) (g)) => (begin (f) (g))
     (define make-seq
       ; ensures that the right subtree of the output seq is not a seq if the
       ; second argument is similarly constrained, to facilitate result-exp
@@ -245,7 +221,8 @@ Notes:
         gensym? symbol?
         char?
         bottom? ptr?  ;pseudo-predicates
-        boolean?)
+        boolean?
+        procedure?)
         name]
       [void? void-rec] ;fake-predicate
       #;[true-object? true-rec]
@@ -380,7 +357,7 @@ Notes:
             (primref-name->predicate
               (symbol-append (list-ref arguments (- (length arguments) 2)) '?)
               #t)])]
-         [dots #f] ;FIXME
+         [dots #f] ; TODO: Extend to handle this case, perhaps knowing the argument count.
          [else
           (cond
             [(< pos (length arguments))
@@ -410,7 +387,7 @@ Notes:
        (set-box! ret (datum->predicate d ir))
        ir]
       [(ref ,maybe-src ,x)
-       (context-case ctxt
+       (case ctxt
          [(test)
           (let ([t (pred-env-lookup types x)])
             (cond
@@ -494,7 +471,7 @@ Notes:
                  (set-box! f-types (pred-env-merge (unbox f-types) (unbox f-types2) '()))]
                 [(check-predicate-implies? (unbox r3) false-rec)
                  (set-box! t-types (pred-env-merge (unbox t-types) (unbox t-types2) '()))])
-              (cond #;FIXME
+              (cond ; TODO: Use a beter method to unify the ret types.
                 [(check-predicate-implies? (unbox r2) (unbox r3))
                  (set-box! ret (unbox r3))]
                 [(check-predicate-implies? (unbox r3) (unbox r2))
@@ -569,12 +546,6 @@ Notes:
                  (eq? (primref-name pr) 'record?))
             (let ([pred (rtd->record-predicate (cadr e*))]
                   [var (unbox (car r*))])
-              #;(when (eq? pred '$record?)
-                   (newline)
-                   (newline)
-                   (display (cadr e*))
-                   (newline)
-                   (newline))
               (cond
                 [(check-predicate-implies-not? var pred)
                  (set-box! ret false-rec)
@@ -604,37 +575,27 @@ Notes:
                 [else
                  (set-box! t-types (pred-env-add/ref (or (unbox n-types) types) (car e*) pred))
                  ir]))]
+           ; TODO: special case for call-with-values.
            [else
             ir]))]
-      [(case-lambda ,preinfo (clause (,x* ...) ,interface ,body))
-       (let* ([r (box #f)]
-              [n-t (box #f)]
-              [t-t (box #f)]
-              [f-t (box #f)]
-              [body (cptypes body 'value types r n-t t-t f-t)]) #;FIXME
-         (context-case ctxt
-           [(app/let) #;FIXME ;also for apply / call-with-values ?
-              (set-box! ret (unbox r))
-              (set-box! n-types (unbox n-t))
-              (set-box! t-types (unbox t-t))
-              (set-box! f-types (unbox f-t))]
-            [else (void)])
-         `(case-lambda ,preinfo (clause (,x* ...) ,interface ,body)))]
       [(case-lambda ,preinfo ,cl* ...)
        (let* ([cl* (map (lambda (cl)
                          (nanopass-case (Lsrc CaseLambdaClause) cl
                            [(clause (,x* ...) ,interface ,body)
-                            (let ([body (cptypes body 'value types (box #f) (box #f) (box #f) (box #f))]) #;FIXME
+                            (let ([body (cptypes body 'value types (box #f) (box #f) (box #f) (box #f))])
                               (with-output-language (Lsrc CaseLambdaClause)
                                 `(clause (,x* ...) ,interface ,body)))]))
                         cl*)])
+         #;(set-box! ret 'procedure?) ; Disabled until lookup is more efficient
          `(case-lambda ,preinfo ,cl* ...))]
       [(call ,preinfo ,e0 ,e* ...)
        (let* ([r* (map (lambda (e) (box #f)) e*)]
               [n-t* (map (lambda (e) (box #f)) e*)]
               [e* (map (lambda (e r n-t) (cptypes e 'value types r n-t (box #f) (box #f))) e* r* n-t*)]
               [e0 (nanopass-case (Lsrc Expr) e0
-                    [(case-lambda ,preinfo (clause (,x* ...) ,interface ,body)) ;move this part to case-lambda
+                    [(case-lambda ,preinfo (clause (,x* ...) ,interface ,body))
+                     ; We are sure that body will run and that it will be run after the evaluation of the arguments,
+                     ; so we can use the types discovered in the arguments and also use the ret and types from the body. 
                      (guard (fx= interface (length x*)))
                      (set-box! n-types types)
                      (for-each (lambda (n-t) (set-box! n-types (pred-env-merge (unbox n-types) (unbox n-t) '()))) n-t*)
@@ -643,21 +604,27 @@ Notes:
                        (let* ([n-subtypes (box #f)]
                               [t-subtypes (box #f)]
                               [f-subtypes (box #f)]
-                              [e0 (cptypes e0 'app/let (unbox subtypes) ret n-subtypes t-subtypes f-subtypes)]) #;FIXME
+                              [body (cptypes body ctxt (unbox subtypes) ret n-subtypes t-subtypes f-subtypes)])
                          (set-box! n-types (pred-env-merge (unbox n-types) (unbox n-subtypes) x*))
                          (set-box! t-types (pred-env-merge (unbox n-types) (unbox t-subtypes) x*))
                          (set-box! f-types (pred-env-merge (unbox n-types) (unbox f-subtypes) x*))
-                         e0))]
+                         `(case-lambda ,preinfo (clause (,x* ...) ,interface ,body))))]
                     [(case-lambda ,preinfo ,cl* ...)
+                     ; We are sure that it will run after the arguments are evaluated,
+                     ; so we can effectively delay the evaluation of the lamba and use more types inside it.
+                     ; TODO: (difficult) Try to use the ret vales and discovered types. 
                      (set-box! n-types types)
                      (for-each (lambda (n-t) (set-box! n-types (pred-env-merge (unbox n-types) (unbox n-t) '()))) n-t*)
-                     (cptypes e0 'value (unbox n-types) (box #f) (box #f) (box #f) (box #f))]  #;FIXME
+                     (cptypes e0 'value (unbox n-types) (box #f) (box #f) (box #f) (box #f))]
                     [else
+                     ; It's difficult to be sure the order the code will run,
+                     ; so assume that the expresion may be evaluated before the arguments.
                       (let* ([r0 (box #f)]
                              [n-t0 (box #f)]
-                             [e0 (cptypes e0 'value types r0 n-t0 (box #f) (box #f))]) #;FIXME
+                             [e0 (cptypes e0 'value types r0 n-t0 (box #f) (box #f))])
                         (set-box! n-types (unbox n-t0))
                         (for-each (lambda (n-t) (set-box! n-types (pred-env-merge (unbox n-types) (unbox n-t) '()))) n-t*)
+                        #;(set-box! n-types (pred-env-add/ref (unbox n-types) e0 'procedure?)) ; Disabled until lookup is more efficient
                         e0)])])
          `(call ,preinfo ,e0 ,e* ...))]
       [(letrec ((,x* ,e*) ...) ,body)
@@ -693,7 +660,10 @@ Notes:
          (set-box! t-types (pred-env-merge (unbox n-types) (unbox t-subtypes) x*))
          (set-box! f-types (pred-env-merge (unbox n-types) (unbox f-subtypes) x*))
          `(letrec* ([,x* ,e*] ...) ,body))]
-      [,pr ir]
+      [,pr
+       (when (all-set? (prim-mask proc) (primref-flags pr))
+         (set-box! ret 'procedure?))
+       ir]
       [(foreign ,conv ,name ,[cptypes : e 'value types (box #f) n-types (box #f) (box #f) -> e] (,arg-type* ...) ,result-type)
        `(foreign ,conv ,name ,e (,arg-type* ...) ,result-type)]
       [(fcallable ,conv ,[cptypes : e 'value types (box #f) n-types (box #f) (box #f) -> e] (,arg-type* ...) ,result-type)
