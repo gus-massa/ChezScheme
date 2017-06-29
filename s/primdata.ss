@@ -863,10 +863,14 @@
   (date-second [sig [(date) -> (fixnum)]] [flags pure mifoldable discard true])
   (date-week-day [sig [(date) -> (fixnum)]] [flags pure mifoldable discard true])
   (date-year-day [sig [(date) -> (fixnum)]] [flags pure mifoldable discard true])
+  (date-dst? [sig [(date) -> (boolean)]] [flags pure mifoldable discard])
   (date-year [sig [(date) -> (fixnum)]] [flags pure mifoldable discard true])
   (date-zone-offset [sig [(date) -> (fixnum)]] [flags pure mifoldable discard true])
+  (date-zone-name [sig [(date) -> (ptr)]] [flags pure mifoldable discard])
   (date->time-utc [sig [(date) -> (time)]] [flags alloc])
-  (make-date [sig [(sub-ufixnum sub-ufixnum sub-ufixnum sub-ufixnum sub-ufixnum sub-ufixnum sub-ufixnum sub-fixnum) -> (date)]] [flags alloc])
+  (make-date [sig [(sub-ufixnum sub-ufixnum sub-ufixnum sub-ufixnum sub-ufixnum sub-ufixnum sub-ufixnum sub-fixnum) -> (date)]
+                  [(sub-ufixnum sub-ufixnum sub-ufixnum sub-ufixnum sub-ufixnum sub-ufixnum sub-ufixnum) -> (date)]]
+             [flags alloc])
   (make-time [sig [(sub-symbol sub-ufixnum sub-fixnum) -> (time)]] [flags alloc])
   (set-time-nanosecond! [sig [(time sub-uint) -> (void)]] [flags true])
   (set-time-second! [sig [(time sub-fixnum) -> (void)]] [flags true])
@@ -1156,6 +1160,8 @@
   (bytevector-u48-set! [sig [(bytevector sub-index symbol u48) -> (void)]] [flags true])
   (bytevector-u56-ref [sig [(bytevector sub-index symbol) -> (u56)]] [flags true mifoldable discard])
   (bytevector-u56-set! [sig [(bytevector sub-index symbol u56) -> (void)]] [flags true])
+  (bytevector-compress [sig [(ptr) -> (ptr)]] [flags])
+  (bytevector-uncompress [sig [(ptr) -> (ptr)]] [flags])
   (call/1cc [sig [(procedure) -> (ptr ...)]] [flags])
   (call-with-input-file [sig [(pathname procedure) (pathname procedure sub-ptr) -> (ptr ...)]] [flags ieee r5rs])      ; has options argument
   (call-with-output-file [sig [(pathname procedure) (pathname procedure sub-ptr) -> (ptr ...)]] [flags ieee r5rs])     ; has options argument
