@@ -120,15 +120,24 @@ Notes:
     (define pred-env-empty
       (make-pred-env '()))
 
-    (define (pred-env-add types x type)
+    (define (pred-env-add types x pred)
       (cond
         [(and types
               x
-              type
-              (not (eq? type 'ptr?)) ;filter 'ptr? to reduce the size
-              (not (prelex-was-assigned x))
-              (not (assoc x (pred-env-assoc types))))
-         (make-pred-env (cons (cons x type) (pred-env-assoc types)))]
+              pred
+              (not (eq? pred 'ptr?)) ; filter 'ptr? to reduce the size
+              (not (prelex-was-assigned x)))
+         (let ([old (assoc x (pred-env-assoc types))])
+           (cond
+             [(not old)
+              (make-pred-env (cons (cons x pred) (pred-env-assoc types)))]
+             [(predicate-implies? (cdr old) pred)
+              types]
+             [(or (predicate-implies-not? (cdr old) pred)
+                  (predicate-implies-not? pred (cdr old)))
+              (make-pred-env (cons (cons x 'bottom?) (pred-env-assoc types)))]
+             [else
+              (make-pred-env (cons (cons x pred) (pred-env-assoc types)))]))]
         [else types]))
 
   (define (pred-env-merge types from skipped)
@@ -261,7 +270,7 @@ Notes:
   ; (implies-not? x bottom?): never
   ; (implies-not? bottom? y): never
   ; check (implies? x bottom?) before (implies? x something?)
-  (define (check-predicate-implies? x y)
+  (define (predicate-implies? x y)
     (and x
          y
          (or (eq? x y)
@@ -306,12 +315,12 @@ Notes:
                [(eq? y 'ptr?) #t]
                [else #f]))))
 
-  (define (check-predicate-implies-not? x y)
+  (define (predicate-implies-not? x y)
     ; for now this is enough
     (and x
          y
-         (not (check-predicate-implies? x y))
-         (not (check-predicate-implies? y x))))
+         (not (predicate-implies? x y))
+         (not (predicate-implies? y x))))
 
   (define (symbol-append . x)
     (string->symbol
@@ -338,7 +347,7 @@ Notes:
               (let ([results (map signature->result-predicate signatures)])
                 (ormap (lambda (one-result)
                          (and (andmap (lambda (result) ;TODO: Get a better union of multiple results
-                                        (check-predicate-implies? result one-result))
+                                        (predicate-implies? result one-result))
                                       results)
                               one-result))
                        results))))]))
@@ -376,7 +385,7 @@ Notes:
                             signatures)])
              (ormap (lambda (one-val)
                       (and (andmap (lambda (val) ;TODO: Get a better union of multiple vals
-                                     (check-predicate-implies? val one-val))
+                                     (predicate-implies? val one-val))
                                    vals)
                            one-val))
                     vals)))))
@@ -391,10 +400,10 @@ Notes:
          [(test)
           (let ([t (pred-env-lookup types x)])
             (cond
-              [(check-predicate-implies-not? t false-rec)
+              [(predicate-implies-not? t false-rec)
                (set-box! ret true-rec)
                true-rec]
-              [(check-predicate-implies? t false-rec)
+              [(predicate-implies? t false-rec)
                (set-box! ret false-rec)
                 false-rec]
               [else
@@ -415,7 +424,7 @@ Notes:
               [n-types1 (box #f)]
               [e1 (cptypes e1 'effect types r1 n-types1 (box #f) (box #f))])
          (cond
-           [(check-predicate-implies? (unbox r1) 'bottom?)
+           [(predicate-implies? (unbox r1) 'bottom?)
             (set-box! ret (unbox r1))
             e1]
            [else
@@ -428,13 +437,13 @@ Notes:
               [f-types1 (box #f)]
               [e1 (cptypes e1 'test types r1 n-types1 t-types1 f-types1)])
          (cond
-           [(check-predicate-implies? (unbox r1) 'bottom?) ;check bottom first
+           [(predicate-implies? (unbox r1) 'bottom?) ;check bottom first
             (set! ret (unbox r1))
             e1]
-           [(check-predicate-implies-not? (unbox r1) false-rec)
+           [(predicate-implies-not? (unbox r1) false-rec)
             (let ([e2 (cptypes e2 ctxt (unbox t-types1) ret n-types t-types f-types)])
               (make-seq ctxt e1 e2))]
-           [(check-predicate-implies? (unbox r1) false-rec)
+           [(predicate-implies? (unbox r1) false-rec)
             (let ([e3 (cptypes e3 ctxt (unbox f-types1) ret n-types t-types f-types)])
               (make-seq ctxt e1 e3))]
            [else
@@ -452,30 +461,41 @@ Notes:
               (set-box! t-types (unbox n-types1))
               (set-box! f-types (unbox n-types1))
               (cond
-                [(check-predicate-implies? (unbox r2) 'bottom?) ;check bottom first
+                [(predicate-implies? (unbox r2) 'bottom?) ;check bottom first
                  (set-box! t-types (unbox t-types3))
                  (set-box! f-types (unbox f-types3))
                  (set-box! ret (unbox r3))
                  (set-box! n-types (unbox n-types3))]
-                [(check-predicate-implies-not? (unbox r2) false-rec)
+                [(predicate-implies-not? (unbox r2) false-rec)
                  (set-box! f-types (pred-env-merge (unbox f-types) (unbox f-types3) '()))]
-                [(check-predicate-implies? (unbox r2) false-rec)
+                [(predicate-implies? (unbox r2) false-rec)
                  (set-box! t-types (pred-env-merge (unbox t-types) (unbox t-types3) '()))])
               (cond
-                [(check-predicate-implies? (unbox r3) 'bottom?) ;check bottom first
+                [(predicate-implies? (unbox r3) 'bottom?) ;check bottom first
                  (set-box! t-types (unbox t-types2))
                  (set-box! f-types (unbox f-types2))
                  (set-box! ret (unbox r2))
                  (set-box! n-types (unbox n-types2))]
-                [(check-predicate-implies-not? (unbox r3) false-rec)
+                [(predicate-implies-not? (unbox r3) false-rec)
                  (set-box! f-types (pred-env-merge (unbox f-types) (unbox f-types2) '()))]
-                [(check-predicate-implies? (unbox r3) false-rec)
+                [(predicate-implies? (unbox r3) false-rec)
                  (set-box! t-types (pred-env-merge (unbox t-types) (unbox t-types2) '()))])
               (cond ; TODO: Use a beter method to unify the ret types.
-                [(check-predicate-implies? (unbox r2) (unbox r3))
+                [(predicate-implies? (unbox r2) (unbox r3))
                  (set-box! ret (unbox r3))]
-                [(check-predicate-implies? (unbox r3) (unbox r2))
+                [(predicate-implies? (unbox r3) (unbox r2))
                  (set-box! ret (unbox r2))]
+                [(and (eq? ctxt 'test)
+                      (predicate-implies-not? (unbox r2) false-rec)
+                      (predicate-implies-not? (unbox r3) false-rec))
+                 (set-box! ret true-rec)]
+                [(find (lambda (t)
+                         (and (predicate-implies? (unbox r2) t)
+                              (predicate-implies? (unbox r3) t)))
+                       '(#;boolean? char? gensym? symbol? ; lookup is slightly more efficient without boolean?
+                         fixnum? integer? number?)) ; ensure they are order from less restrictive to most restrictive
+                 => (lambda (t)
+                      (set-box! ret t))]
                 [else (void)])
               `(if ,e1 ,e2 ,e3))]))]
       [(set! ,maybe-src ,x ,[cptypes : e 'value types (box #f) n-types (box #f) (box #f) -> e])
@@ -503,8 +523,8 @@ Notes:
                     [e1 (car e*)]
                     [e2 (cadr e*)])
               (cond
-                [(or (check-predicate-implies-not? (unbox r1) (unbox r2))
-                     (check-predicate-implies-not? (unbox r2) (unbox r1)))
+                [(or (predicate-implies-not? (unbox r1) (unbox r2))
+                     (predicate-implies-not? (unbox r2) (unbox r1)))
                  (set-box! ret false-rec)
                  (make-seq ctxt (make-seq 'effect e1 e2) false-rec)]
                 [else
@@ -517,10 +537,10 @@ Notes:
             (let ([pred (primref->predicate pr #f)]
                   [var (unbox (car r*))])
               (cond
-                [(check-predicate-implies? var pred)
+                [(predicate-implies? var pred)
                  (set-box! ret true-rec)
                  (make-seq ctxt (car e*) true-rec)]
-                [(check-predicate-implies-not? var pred)
+                [(predicate-implies-not? var pred)
                  (set-box! ret false-rec)
                  (make-seq ctxt (car e*) false-rec)]
                 [else
@@ -532,7 +552,7 @@ Notes:
                   [var (unbox (car r*))])
               (cond
                 ; no (pred? <ext-pred?>) => #t
-                [(check-predicate-implies-not? var pred)
+                [(predicate-implies-not? var pred)
                  (set-box! ret false-rec)
                  (make-seq ctxt (car e*) false-rec)]
                 [else
@@ -547,11 +567,11 @@ Notes:
             (let ([pred (rtd->record-predicate (cadr e*))]
                   [var (unbox (car r*))])
               (cond
-                [(check-predicate-implies-not? var pred)
+                [(predicate-implies-not? var pred)
                  (set-box! ret false-rec)
                  (make-seq ctxt (make-seq 'effect (car e*) (cadr e*)) false-rec)]
                 [(and (not (eq? pred '$record?)) ; assume that the only extension is '$record?
-                      (check-predicate-implies? var pred))
+                      (predicate-implies? var pred))
                  (set-box! ret true-rec)
                  (make-seq ctxt (make-seq 'effect (car e*) (cadr e*)) true-rec)]
                 [else
@@ -562,14 +582,14 @@ Notes:
             (let ([pred (rtd->record-predicate (cadr e*))]
                   [var (unbox (car r*))])
               (cond
-                [(check-predicate-implies-not? var pred)
+                [(predicate-implies-not? var pred)
                  (set-box! ret false-rec)
                  (make-seq ctxt (make-seq 'effect (car e*) (cadr e*)) false-rec)]
                 [(and (not (eq? pred '$record?)) ; assume that the only extension is '$record?
                       (pair? pred) (pair? (cdr pred)) (eq? (car pred) '$record?) ;just in case
                       (record-type-descriptor? (cadr pred))
                       (record-type-sealed? (cadr pred))
-                      (check-predicate-implies? var pred))
+                      (predicate-implies? var pred))
                  (set-box! ret true-rec)
                  (make-seq ctxt (make-seq 'effect (car e*) (cadr e*)) true-rec)]
                 [else
