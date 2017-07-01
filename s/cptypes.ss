@@ -21,11 +21,11 @@ Notes:
    <return value>: the optimized expression
 
    ctxt: 'effect 'test 'value
-   types: a "pred-env" record. It's just a record with a single field (like a box),
-          with an assoc inside, the idea is to replace the implementation later,
-          so use it only with the API. It's immutable.
-          It has the associations of prelex to types that were discovered before.
-          (make-pred-env ((x . 'pair?) (y . 'vector) (z . `(quote 0))))
+   types: a "pred-env" record. It's record with a hamt (for fast lookup) and an
+          assoc (to get the last additions). Use it only with the API so it's
+          posible to cange the implementation later. It's immutable.
+          It has the hamt/associations of prelex to types that were discovered.
+          ((x . 'pair?) (y . 'vector?) (z . `(quote 0)))
    ret [out]: a box to return the type of the result of the expression
    n-types [out]: a box to return the types to be used in the next expression.
                   Add here the new discovered predicates to the ones in types.
@@ -57,10 +57,18 @@ Notes:
 
 |#
 
-[define $cptypes
-[let ()
+
+(define $cptypes
+(let ()
   (import (nanopass))
   (include "base-lang.ss")
+
+  (module (hamt-empty hamt-ref hamt-set)
+    (include "hamt.ss")
+    (define hamt-empty $hamt-empty)
+    (define (hamt-ref hash key default) ($hamt-ref hash key equal-hash equal? default))
+    (define (hamt-set hash key val) ($hamt-set hash key equal-hash equal? val))
+  )
 
   (with-output-language (Lsrc Expr)
     (define void-rec `(quote ,(void)))
@@ -115,10 +123,17 @@ Notes:
     (define-record-type pred-env
       (nongenerative)
       (opaque #t)
-      (fields assoc))
+      (fields hamt assoc depth))
+    ; depth is the length of the assoc. It may be bigger than the count of the
+    ; hamt in case a predicate was "replaced" with a more specific one. 
 
     (define pred-env-empty
-      (make-pred-env '()))
+      (make-pred-env (hamt-empty) '() 0))
+
+    (define (pred-env-add/raw types x pred)
+      (make-pred-env (hamt-set (pred-env-hamt types) x pred)
+                     (cons (cons x pred) (pred-env-assoc types))
+                     (fx+ 1 (pred-env-depth types))))
 
     (define (pred-env-add types x pred)
       (cond
@@ -127,41 +142,68 @@ Notes:
               pred
               (not (eq? pred 'ptr?)) ; filter 'ptr? to reduce the size
               (not (prelex-was-assigned x)))
-         (let ([old (assoc x (pred-env-assoc types))])
+         (let ([old (hamt-ref (pred-env-hamt types) x #f)])
            (cond
              [(not old)
-              (make-pred-env (cons (cons x pred) (pred-env-assoc types)))]
-             [(predicate-implies? (cdr old) pred)
+              (pred-env-add/raw types x pred)]
+             [(predicate-implies? old pred)
               types]
-             [(or (predicate-implies-not? (cdr old) pred)
-                  (predicate-implies-not? pred (cdr old)))
-              (make-pred-env (cons (cons x 'bottom?) (pred-env-assoc types)))]
+             [(or (predicate-implies-not? old pred)
+                  (predicate-implies-not? pred old))
+              (pred-env-add/raw types x 'bottom)]
              [else
-              (make-pred-env (cons (cons x pred) (pred-env-assoc types)))]))]
+              (pred-env-add/raw types x pred)]))]
         [else types]))
 
+  (define (pred-env-merge/raw types base n from skipped)
+    (let loop ([types types]
+               [base base]
+               [n n]
+               [from from])
+      (cond
+        [(and (not (null? from))
+              (not (eq? from base)))
+         (let* ([a (car from)]
+                [types (cond
+                         [(member (car a) skipped)
+                          types]
+                         [else
+                          (pred-env-add types (car a) (cdr a))])]
+                [base (and base
+                           (if (fx> n 0)
+                              base
+                              (cdr base)))])
+           (loop types base (fx- n 1) (cdr from)))]
+        [else types])))
+
   (define (pred-env-merge types from skipped)
+    ; When possible we will trim the assoc in types to make it of the same
+    ; length of the assoc in from. But we will avoid this if it is too long. 
     (cond
-      [(and types from)
-       (let ([base (pred-env-assoc types)]) ;try to avoid common part
-         (let loop ([types types] [from (pred-env-assoc from)])
-           (cond
-             [(and (not (null? from))
-                   (not (eq? from base)))
-              (let ([a (car from)])
-                (cond
-                  [(member (car a) skipped)
-                   (loop types (cdr from))]
-                  [else
-                   (loop (pred-env-add types (car a) (cdr a)) (cdr from))]))]
-              [else types])))]
-      [else types]))
+      [(not from)
+       types]
+      [(not types)
+       (pred-env-merge/raw pred-env-empty #f 0 (pred-env-assoc from) skipped)]
+      [(> (pred-env-depth types) (fx* (pred-env-depth from) 5))
+       (pred-env-merge/raw types #f 0 (pred-env-assoc from) skipped)]
+      [(> (pred-env-depth types) (pred-env-depth from))
+       (pred-env-merge/raw types 
+                           (list-tail (pred-env-assoc types)
+                                      (fx- (pred-env-depth types) (pred-env-depth from)))
+                            0
+                           (pred-env-assoc from)
+                           skipped)]
+      [else 
+       (pred-env-merge/raw types
+                           (pred-env-assoc types)
+                           (fx- (pred-env-depth from) (pred-env-depth types))
+                           (pred-env-assoc from)
+                           skipped)]))
 
     (define (pred-env-lookup types x)
       (and types
            (not (prelex-was-assigned x))
-           (let ([a (assoc x (pred-env-assoc types))])
-             (and a (cdr a)))))
+           (hamt-ref (pred-env-hamt types) x #f)))
   )
 
   (define (pred-env-add/ref types r pred)
@@ -492,7 +534,7 @@ Notes:
                 [(find (lambda (t)
                          (and (predicate-implies? (unbox r2) t)
                               (predicate-implies? (unbox r3) t)))
-                       '(#;boolean? char? gensym? symbol? ; lookup is slightly more efficient without boolean?
+                       '(boolean? char? gensym? symbol? ; lookup is slightly more efficient without boolean?
                          fixnum? integer? number?)) ; ensure they are order from less restrictive to most restrictive
                  => (lambda (t)
                       (set-box! ret t))]
@@ -739,4 +781,4 @@ Notes:
 
   (lambda (x)
     (cptypes x 'value pred-env-empty (box #f) (box #f) (box #f) (box #f)))
-]]
+))
