@@ -1,3 +1,18 @@
+;;; fxmap.ss
+;;; Copyright 1984-2017 Cisco Systems, Inc.
+;;; 
+;;; Licensed under the Apache License, Version 2.0 (the "License");
+;;; you may not use this file except in compliance with the License.
+;;; You may obtain a copy of the License at
+;;; 
+;;; http://www.apache.org/licenses/LICENSE-2.0
+;;; 
+;;; Unless required by applicable law or agreed to in writing, software
+;;; distributed under the License is distributed on an "AS IS" BASIS,
+;;; WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+;;; See the License for the specific language governing permissions and
+;;; limitations under the License.
+
 ;; Based on Okasaki and Gill's "Fast Mergeable Integer Maps" (1998).
 
 (module fxmap
@@ -8,12 +23,15 @@
   fxmap-ref
   fxmap-set
   fxmap-remove
-  fxmap-merge
+  ;fxmap-merge
+  fxmap-intersect
+  fxmap-union
 
   ;; internals
-  $branch? make-$branch $branch-prefix $branch-mask $branch-left $branch-right
-  $leaf? make-$leaf $leaf-key $leaf-val
-  $empty?)
+  ; $branch? make-$branch $branch-prefix $branch-mask $branch-left $branch-right
+  ; $leaf? make-$leaf $leaf-key $leaf-val
+  ; $empty? make-$empty
+  )
 
  ;; record types
 
@@ -162,10 +180,10 @@
 
  ;; merge
 
- (define (fxmap-merge bin f id g1 g2 d1 d2)
+ (define (fxmap-merge* bin f id g1 g2 d1 d2)
    (define-syntax go
      (syntax-rules ()
-       [(_ d1 d2) (fxmap-merge bin f id g1 g2 d1 d2)]))
+       [(_ d1 d2) (fxmap-merge* bin f id g1 g2 d1 d2)]))
 
    (cond
     [(eq? d1 d2) (id d1)]
@@ -244,4 +262,74 @@
             [m ($branch-mask d)] ...
             [l ($branch-left d)] ...
             [r ($branch-right d)] ...)
-        exp ...)])))
+        exp ...)]))
+
+ (define (fxmap-merge f id g1 g2 d1 d2)
+   (fxmap-merge* (lambda (prefix mask left right)
+                   (cond
+                     [($empty? right) left]
+                     [($empty? left) right]
+                     [else (make-$branch prefix mask left right)]))
+                 (lambda (x y)
+                   (let* ([vx ($leaf-val x)]
+                          [vy ($leaf-val y)]
+                          [r (f vx vy)])
+                     (cond
+                       [(not r) (make-$empty)]
+                       [(eq? r vx) x]
+                       [(eq? r vy) y]
+                       [else (make-$leaf ($leaf-key x) r)])))
+                 (if id
+                     (lambda (x) x)
+                     (lambda (x) (make-$empty)))
+                 (if g1
+                     (lambda (x) x)
+                     (lambda (x) (make-$empty)))
+                 (if g2
+                     (lambda (x) x)
+                     (lambda (x) (make-$empty)))
+                 d1
+                 d2))
+
+ (define (fxmap-intersect f d1 d2)
+   (fxmap-merge* (lambda (prefix mask left right)
+                   (cond
+                     [($empty? right) left]
+                     [($empty? left) right]
+                     [else (make-$branch prefix mask left right)]))
+                 (lambda (x y)
+                   (let* ([vx ($leaf-val x)]
+                          [vy ($leaf-val y)]
+                          [r (f vx vy)])
+                     (cond
+                       [(not r) (make-$empty)]
+                       [(eq? r vx) x]
+                       [(eq? r vy) y]
+                       [else (make-$leaf ($leaf-key x) r)])))
+                 (lambda (x) x)
+                 (lambda (x) (make-$empty))
+                 (lambda (x) (make-$empty))
+                 d1
+                 d2))
+
+ (define (fxmap-union f d1 d2)
+   (fxmap-merge* (lambda (prefix mask left right)
+                   (cond
+                     [($empty? right) left]
+                     [($empty? left) right]
+                     [else (make-$branch prefix mask left right)]))
+                 (lambda (x y)
+                   (let* ([vx ($leaf-val x)]
+                          [vy ($leaf-val y)]
+                          [r (f vx vy)])
+                     (cond
+                       [(not r) (make-$empty)]
+                       [(eq? r vx) x]
+                       [(eq? r vy) y]
+                       [else (make-$leaf ($leaf-key x) r)])))
+                 (lambda (x) x)
+                 (lambda (x) x)
+                 (lambda (x) x)
+                 d1
+                 d2))
+)
