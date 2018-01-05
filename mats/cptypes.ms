@@ -366,7 +366,7 @@
 (mat cptypes-type-implies?
   (test-chain '((lambda (x) (eq? x 0)) fixnum? #;exact-integer? real? number?))
   (test-chain* '(fixnum? integer? real?))
-  (test-chain* '(fixnum? #3%exact? number?)) ; exact? may raise an error
+  (test-chain* '(fixnum? exact? number?)) ; exact? may raise an error
   (test-chain* '((lambda (x) (eq? x (expt 256 100))) real? number?)) ; bignum?
   (test-chain '((lambda (x) (eqv? 0.0 x)) flonum? real? number?))
   (test-chain '(gensym? symbol?))
