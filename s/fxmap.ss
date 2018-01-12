@@ -23,9 +23,13 @@
   fxmap-ref
   fxmap-set
   fxmap-remove
+  fxmap-remove/base
   ;fxmap-merge
   fxmap-intersect
   fxmap-union
+  fxmap-for-each/diff
+  fxmap-changes
+  fxmap-rebase
 
   ;; internals
   ; $branch? make-$branch $branch-prefix $branch-mask $branch-left $branch-right
@@ -131,6 +135,11 @@
 
     [else
      empty-fxmap]))
+
+ (define (fxmap-remove/base d key base)
+   ;FIXME: use base
+   (fxmap-remove d key))
+
 
  ;; set and remove utilities
 
@@ -332,4 +341,50 @@
                  (lambda (x) x)
                  d1
                  d2))
+
+ (define (fxmap-for-each g1 d1)
+   (cond
+     [($branch? d1)
+      (fxmap-for-each g1 ($branch-left d1))
+      (fxmap-for-each g1 ($branch-right d1))]
+     [($leaf? d1)
+      (g1 ($leaf-key d1) ($leaf-val d1))]
+     [else ; ($empty? d1)
+      (void)])
+   (void))
+
+ (define (fxmap-for-each/diff f g1 g2 d1 d2)
+   (fxmap-merge* (lambda (prefix mask left right) (make-$empty))
+                 (lambda (x y) (f ($leaf-key x) ($leaf-val x) ($leaf-val y)) (make-$empty))
+                 (lambda (x) (make-$empty))
+                 (lambda (x) (fxmap-for-each g1 x) (make-$empty))
+                 (lambda (x) (fxmap-for-each g2 x) (make-$empty))
+                 d1
+                 d2)
+   (void))
+
+ (define fxmap-changes/cache (make-weak-eq-hashtable))
+
+ (define (fxmap-changes/no-cache d1)
+   ;FIXME: this is count, not changes
+   (cond
+     [($branch? d1)
+      (fx+ (fxmap-changes ($branch-left d1))
+           (fxmap-changes ($branch-right d1)))]
+     [($leaf? d1)
+      1]
+     [else ; ($empty? d1)
+      0]))
+ 
+  (define (fxmap-changes d1)
+    (if (hashtable-contains? fxmap-changes/cache d1)
+        (hashtable-ref fxmap-changes/cache d1 #f)
+        (let ([new (fxmap-changes/no-cache d1)])
+          (hashtable-set! fxmap-changes/cache d1 new)
+          new)))
+
+  (define (fxmap-rebase d1 base)
+    ;FIXME: use base
+    d1)
+
 )

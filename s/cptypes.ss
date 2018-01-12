@@ -115,7 +115,10 @@ Notes:
               (make-seq ctxt (car e*) (make-seq* ctxt (cdr e*))))))
   )
 
-  (module (pred-env-empty pred-env-add pred-env-intersect pred-env-union
+  (module (pred-env-empty pred-env-add #;pred-env-remove
+           #;pred-env-intersect #;pred-env-union
+           pred-env-intersect/base pred-env-union/base
+           pred-env-rebase pred-env-remove/base
            pred-intersect pred-union pred-env-lookup)
     (import fxmap)
 
@@ -140,6 +143,33 @@ Notes:
     (define (pred-env-add/raw types x pred)
       (fxmap-set types (prelex-counter x) pred))
 
+    (define (pred-env-remove/base types x base)
+      (pred-env-remove/base/raw types x base))
+
+    (define (pred-env-remove types x)
+      (pred-env-remove/raw types x))
+
+    (define (pred-env-remove/raw types x)
+      (fxmap-remove types (prelex-counter x)))
+
+    (define (pred-env-remove/base/raw types x base)
+      (fxmap-remove/base types (prelex-counter x) base))
+
+    (define (pred-env-add/key types key pred)
+      (cond
+        [(and pred
+              (not (eq? pred 'ptr))) ; filter 'ptr to reduce the size
+         (let ([old (fxmap-ref types key #f)])
+           (cond
+             [(not old)
+              (fxmap-set types key pred)]
+             [else (let ([new (pred-intersect old pred)])
+                     (if (eq? old new)
+                         types
+                        (fxmap-set types key new)))]))]
+        [else
+         types]))
+
     ; This is conceptually the intersection of the types in `types` and `from`
     ; but since 'ptr is not stored to save space and time, the implementation
     ; uses the union of the fxmaps.
@@ -158,6 +188,26 @@ Notes:
              (predicate-implies-not? y x))
          'bottom]
         [else (or x y)])) ; if there is no exact option, at least keep the old value
+
+    (define (pred-env-intersect/base types from base)
+      #;(display (list (fxmap-changes from) (fxmap-changes types)))
+      (cond
+        [(fx> (fxmap-changes from) (fxmap-changes types))
+         (pred-env-intersect/base from types base)]
+        [else
+        (let ([ret types])
+          (fxmap-for-each/diff (lambda (key x y)
+                                (let ([z (fxmap-ref types key #f)])
+                                  ;x-> from
+                                  ;y-> base
+                                  ;z-> types
+                                  (set! ret (pred-env-add/key ret key (pred-intersect x z)))))
+                               (lambda (key x)
+                                (set! ret (pred-env-add/key ret key x)))
+                               (lambda (key x) (error 'pred-env-intersect/base "") (void))
+                               from
+                               base)
+           ret)]))
 
     ; This is conceptually the union of the types in `types` and `from`
     ; but since 'ptr is not stored to save space and time, the implementation
@@ -180,6 +230,31 @@ Notes:
                '(boolean char null-or-pair gensym symbol
                  fixnum exact-integer flonum real number))] ; ensure they are order from more restrictive to less restrictive
         [else #f]))
+
+    (define (pred-env-union/base types from base)
+      (cond
+        [(fx> (fxmap-changes from) (fxmap-changes types))
+         (pred-env-union/base from types base)]
+        [else
+        (let ([ret base])
+          (fxmap-for-each/diff (lambda (key x y)
+                                (let ([z (fxmap-ref types key #f)])
+                                  ;x-> from
+                                  ;y-> base
+                                  ;z-> types
+                                  (set! ret (pred-env-add/key ret key (pred-union x z)))))
+                               (lambda (key x)
+                                (let ([z (fxmap-ref types key #f)])
+                                  ;x-> from
+                                  ;z-> types
+                                  (set! ret (pred-env-add/key ret key (pred-union x z)))))
+                               (lambda (key x) (error 'pred-env-union/base "") (void))
+                               from
+                               base)
+          ret)]))
+
+    (define (pred-env-rebase types base)
+      (fxmap-rebase types base))
 
     (define (pred-env-lookup types x)
       (and (not (prelex-was-assigned x))
@@ -556,39 +631,40 @@ Notes:
                   [(predicate-implies? ret3 'bottom) ;check bottom first
                    (values ir ret2 types2 t-types2 f-types2)]
                   [else
-                   (values ir
-                           (cond
-                             [(and (eq? ctxt 'test)
-                                   (predicate-implies-not? ret2 false-rec)
-                                   (predicate-implies-not? ret3 false-rec))
-                              true-rec]
-                             [else
-                              (pred-union ret2 ret3)])
-                           (pred-env-union types2 types3)
-                           (cond
-                             [(not (eq? ctxt 'test))
-                              #f] ; don't calculate t-types outside a test context
-                             [(predicate-implies? ret2 false-rec)
-                              t-types3]
-                             [(predicate-implies? ret3 false-rec)
-                              t-types2]
-                             [(and (eq? types2 t-types2)
-                                   (eq? types3 t-types3))
-                              #f] ; don't calculate t-types when it will be equal to types
-                             [else
-                              (pred-env-union t-types2 t-types3)])
-                           (cond
-                             [(not (eq? ctxt 'test))
-                              #f] ; don't calculate f-types outside a test context
-                             [(predicate-implies-not? ret2 false-rec)
-                              f-types3]
-                             [(predicate-implies-not? ret3 false-rec)
-                              f-types2]
-                             [(and (eq? types2 f-types2)
-                                   (eq? types3 f-types3))
-                              #f] ; don't calculate f-types when it will be equal to types
-                             [else
-                              (pred-env-union f-types2 f-types3)]))])))]))]
+                   (let ([new-types (pred-env-union/base types2 types3 types1)]) 
+                     (values ir
+                             (cond
+                               [(and (eq? ctxt 'test)
+                                     (predicate-implies-not? ret2 false-rec)
+                                     (predicate-implies-not? ret3 false-rec))
+                                true-rec]
+                               [else
+                                (pred-union ret2 ret3)])
+                             new-types
+                             (cond
+                               [(not (eq? ctxt 'test))
+                                #f] ; don't calculate t-types outside a test context
+                               [(predicate-implies? ret2 false-rec)
+                                (pred-env-rebase t-types3 new-types)]
+                               [(predicate-implies? ret3 false-rec)
+                                (pred-env-rebase t-types2 new-types)]
+                               [(and (eq? types2 t-types2)
+                                     (eq? types3 t-types3))
+                                #f] ; don't calculate t-types when it will be equal to new-types
+                               [else
+                                (pred-env-rebase (pred-env-union/base t-types2 t-types3 types1) new-types)])
+                             (cond
+                               [(not (eq? ctxt 'test))
+                                #f] ; don't calculate f-types outside a test context
+                               [(predicate-implies-not? ret2 false-rec)
+                                (pred-env-rebase f-types3 new-types)]
+                               [(predicate-implies-not? ret3 false-rec)
+                                (pred-env-rebase f-types2 new-types)]
+                               [(and (eq? types2 f-types2)
+                                     (eq? types3 f-types3))
+                                #f] ; don't calculate t-types when it will be equal to new-types
+                               [else
+                                (pred-env-rebase (pred-env-union/base f-types2 f-types3 types1) new-types)])))])))]))]
       [(set! ,maybe-src ,x ,e)
        (let-values ([(e ret types t-types f-types)
                      (cptypes e 'value types)])
@@ -603,13 +679,13 @@ Notes:
               [e* (map car e/r/t*)]
               [r* (map cadr e/r/t*)]
               [t* (map caddr e/r/t*)]
-              [types (fold-left pred-env-intersect types t*)]
+              [t (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)]
               [ret (primref->result-predicate pr #t)]
               [ir `(call ,preinfo ,pr ,e* ...)])
-         (let-values ([(ret types)
-                       (let loop ([e* e*] [r* r*] [n 0] [ret ret] [types types])
+         (let-values ([(ret t)
+                       (let loop ([e* e*] [r* r*] [n 0] [ret ret] [t t])
                          (if (null? e*)
-                             (values ret types)
+                             (values ret t)
                              (let ([pred (primref->argument-predicate pr n #t)])
                                (loop (cdr e*)
                                      (cdr r*)
@@ -617,12 +693,12 @@ Notes:
                                      (if (predicate-implies-not? (car r*) pred)
                                          'bottom
                                          ret)
-                                     (pred-env-add/ref types (car e*) pred)))))])
+                                     (pred-env-add/ref t (car e*) pred)))))])
            (cond
              [(predicate-implies? ret 'bottom)
-              (values ir ret types #f #f)]
+              (values ir ret t #f #f)]
              [(not (arity-okay? (primref-arity pr) (length e*)))
-              (values ir 'bottom types #f #f)]
+              (values ir 'bottom t #f #f)]
              [(and (fx= (length e*) 2)
                    (or (eq? (primref-name pr) 'eq?)
                        (eq? (primref-name pr) 'eqv?)))
@@ -634,12 +710,12 @@ Notes:
                     [(or (predicate-implies-not? r1 r2)
                          (predicate-implies-not? r2 r1))
                      (values (make-seq ctxt (make-seq 'effect e1 e2) false-rec)
-                             false-rec types #f #f)]
+                             false-rec t #f #f)]
                     [else
                      (values ir ret types
                              (and (eq? ctxt 'test)
                                   (pred-env-add/ref
-                                   (pred-env-add/ref types e1 r2)
+                                   (pred-env-add/ref t e1 r2)
                                    e2 r1))
                              #f)]))]
              [(and (fx= (length e*) 1)
@@ -649,21 +725,21 @@ Notes:
                 (cond
                     [(predicate-implies? var pred)
                      (values (make-seq ctxt (car e*) true-rec)
-                             true-rec types #f #f)]
+                             true-rec t #f #f)]
                     [else
                      (let ([pred (primref->predicate pr #t)])
                        (cond
                          [(predicate-implies-not? var pred)
                           (values (make-seq ctxt (car e*) false-rec)
-                                  false-rec types #f #f)]
+                                  false-rec t #f #f)]
                          [else
                           (values ir ret types
                                   (and (eq? ctxt 'test)
-                                       (pred-env-add/ref types (car e*) pred))
+                                       (pred-env-add/ref t (car e*) pred))
                                   #f)]))]))]
              [(and (fx>= (length e*) 1)
                    (eq? (primref-name pr) '$record))
-              (values ir (rtd->record-predicate (car e*)) types #f #f)]
+              (values ir (rtd->record-predicate (car e*)) t #f #f)]
              [(and (fx= (length e*) 2)
                    (or (eq? (primref-name pr) 'record?)
                        (eq? (primref-name pr) '$sealed-record?)))
@@ -679,14 +755,14 @@ Notes:
                             [(record-type ,rtd ,e) #t]
                             [else #f]))
                       (values (make-seq ctxt (make-seq 'effect (car e*) (cadr e*)) false-rec)
-                              false-rec types #f #f)]
+                              false-rec t #f #f)]
                      [else
                       (values (make-seq ctxt ir false-rec)
-                              false-rec types #f #f)])]
+                              false-rec t #f #f)])]
                   [(and (not (eq? pred '$record)) ; assume that the only extension is '$record
                         (predicate-implies? var pred))
                    (values (make-seq ctxt (make-seq 'effect (car e*) (cadr e*)) true-rec)
-                           true-rec types #f #f)]
+                           true-rec t #f #f)]
                   [else
                    (values ir ret types
                            (and (eq? ctxt 'test)
@@ -698,14 +774,14 @@ Notes:
               (cond
                 [(predicate-implies? (car r*) 'fixnum)
                  (values (make-seq ctxt (car e*) true-rec)
-                         true-rec types #f #f)]
+                         true-rec t #f #f)]
                 [(predicate-implies? (car r*) 'flonum)
                  (values (make-seq ctxt (car e*) false-rec)
-                         false-rec types #f #f)]
+                         false-rec t #f #f)]
                 [else
-                 (values ir ret types #f #f)])]
+                 (values ir ret t #f #f)])]
              [else
-              (values ir ret types #f #f)])))]
+              (values ir ret t #f #f)])))]
       [(case-lambda ,preinfo ,cl* ...)
        (let ([cl* (map (lambda (cl)
                         (nanopass-case (Lsrc CaseLambdaClause) cl
@@ -725,18 +801,23 @@ Notes:
               [e* (map car e/r/t*)]
               [r* (map cadr e/r/t*)]
               [t* (map caddr e/r/t*)]
-              [t (fold-left pred-env-intersect types t*)])
+              [t (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)])
          (nanopass-case (Lsrc Expr) e0
            [(case-lambda ,preinfo2 (clause (,x* ...) ,interface ,body))
             ; We are sure that body will run and that it will be run after the evaluation of the arguments,
             ; so we can use the types discovered in the arguments and also use the ret and types from the body.
             (guard (fx= interface (length e*)))
             (let ([t (fold-left pred-env-add t x* r*)])
-              (let-values ([(body ret types t-types f-types)
+              (let-values ([(body ret n-types t-types f-types)
                             (cptypes body ctxt t)])
-                (let ([e0 `(case-lambda ,preinfo2 (clause (,x* ...) ,interface ,body))])
+                (let* ([e0 `(case-lambda ,preinfo2 (clause (,x* ...) ,interface ,body))]
+                       [n-types (fold-left (lambda (f x) (pred-env-remove/base f x types)) n-types x*)]
+                       [t-types (and (eq? ctxt 'test)
+                                     (fold-left (lambda (f x) (pred-env-remove/base f x n-types)) t-types x*))]
+                       [f-types (and (eq? ctxt 'test)
+                                     (fold-left (lambda (f x) (pred-env-remove/base f x n-types)) f-types x*))])
                   (values `(call ,preinfo ,e0 ,e* ...)
-                          ret types t-types f-types))))]
+                          ret n-types t-types f-types))))]
            [(case-lambda ,preinfo2 (clause (,x* ...) ,interface ,body))
             ; We are sure that body will run and that it will be run after the evaluation of the arguments,
             ; but this will raise an error. TODO: change body to (void) because it will never run.
@@ -759,7 +840,7 @@ Notes:
             ; so assume that the expression may be evaluated before the arguments.
             (let-values ([(e0 ret0 types0 t-types0 f-types0)
                           (cptypes e0 'value types)])
-               (let* ([t (pred-env-intersect t types0)]
+               (let* ([t (pred-env-intersect/base t types0 types)]
                       [t (pred-env-add/ref t e0 'procedure)])
                  (values `(call ,preinfo ,e0 ,e* ...)
                          #f t #f #f)))]))]
@@ -772,12 +853,17 @@ Notes:
               [e* (map car e/r/t*)]
               [r* (map cadr e/r/t*)]
               [t* (map caddr e/r/t*)]
-              [types (fold-left pred-env-intersect types t*)]
-              [types (fold-left pred-env-add types x* r*)])
-        (let-values ([(body ret types t-types f-types)
-                     (cptypes body ctxt types)])
-        (values `(letrec ([,x* ,e*] ...) ,body)
-                  ret types t-types f-types)))]
+              [t (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)]
+              [t (fold-left pred-env-add t x* r*)])
+        (let-values ([(body ret n-types t-types f-types)
+                     (cptypes body ctxt t)])
+          (let ([n-types (fold-left (lambda (f x) (pred-env-remove/base f x types)) n-types x*)]
+                [t-types (and (eq? ctxt 'test)
+                              (fold-left (lambda (f x) (pred-env-remove/base f x n-types)) t-types x*))]
+                [f-types (and (eq? ctxt 'test)
+                              (fold-left (lambda (f x) (pred-env-remove/base f x n-types)) f-types x*))])
+            (values `(letrec ([,x* ,e*] ...) ,body)
+                    ret n-types t-types f-types))))]
       [(letrec* ((,x* ,e*) ...) ,body)
        (let*-values ([(e* types)
                       (let loop ([x* x*] [e* e*] [types types] [rev-e* '()]) ; this is similar to an ordered-map
@@ -787,10 +873,15 @@ Notes:
                                         (cptypes (car e*) 'value types)])
                             (let ([types (pred-env-add types (car x*) ret)])
                               (loop (cdr x*) (cdr e*) types (cons e rev-e*))))))])
-        (let-values ([(body ret types t-types f-types)
+        (let-values ([(body ret n-types t-types f-types)
                       (cptypes body ctxt types)])
-          (values `(letrec* ([,x* ,e*] ...) ,body)
-                  ret types t-types f-types)))]
+          (let ([n-types (fold-left (lambda (f x) (pred-env-remove/base f x types)) n-types x*)]
+                [t-types (and (eq? ctxt 'test)
+                              (fold-left (lambda (f x) (pred-env-remove/base f x n-types)) t-types x*))]
+                [f-types (and (eq? ctxt 'test)
+                              (fold-left (lambda (f x) (pred-env-remove/base f x n-types)) f-types x*))])
+            (values `(letrec* ([,x* ,e*] ...) ,body)
+                    ret n-types t-types f-types))))]
       [,pr
        (values ir
                (and (all-set? (prim-mask proc) (primref-flags pr)) 'procedure)
@@ -818,7 +909,7 @@ Notes:
                 [t* (map caddr e/r/t*)])
          (values `(record ,rtd ,rtd-expr ,e* ...)
                  (rtd->record-predicate rtd-expr)
-                 (fold-left pred-env-intersect types-re t*)
+                 (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)
                  #f #f)))]
       [(record-ref ,rtd ,type ,index ,e)
        (let-values ([(e ret types t-types f-types)
@@ -834,7 +925,7 @@ Notes:
                      (cptypes e2 'value types)])
          (values `(record-set! ,rtd ,type ,index ,e1 ,e2)
                  void-rec
-                 (pred-env-add/ref (pred-env-intersect types1 types2)
+                 (pred-env-add/ref (pred-env-intersect/base types1 types2 types)
                                    e1 '$record)
                  #f #f))]
       [(record-type ,rtd ,[cptypes : e 'value types -> e ret types t-types f-types])
