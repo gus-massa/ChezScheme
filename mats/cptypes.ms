@@ -546,3 +546,118 @@
          '(lambda (x) (when (number? x) (#2%odd? x)))
          '(lambda (x) (when (number? x) (#3%odd? x)))))
 )
+
+
+(include "../s/fxmap.ss")
+(import fxmap)
+(random-seed (time-nanosecond (current-time)))
+
+(define (test-fxmap-remove/base B N)
+  (let*([base-list (map (lambda (x) (random 100)) (make-list B))]
+        [new-list (map (lambda (x) (random 100)) (make-list N))]
+        [base (let ([ret empty-fxmap])
+                (for-each (lambda (x) (set! ret (fxmap-set ret x '!))) base-list)
+                (for-each (lambda (x) (set! ret (fxmap-remove ret x))) new-list)
+                ret)]
+        [new (let ([ret base])
+                (for-each (lambda (x) (set! ret (fxmap-set ret x '!))) new-list)
+                ret)]
+        [old (let ([ret new])
+                (for-each (lambda (x) (set! ret (fxmap-remove/base ret x base))) new-list)
+                ret)]
+        [old/r (let ([ret new])
+                 (for-each (lambda (x) (set! ret (fxmap-remove/base ret x base))) (reverse new-list))
+                 ret)])
+    (when (not (eq?  base old))
+      (error 'e (list 'd base-list new-list base old))) 
+    (when (not (eq?  base old/r))
+      (error 'e (list 'd/r base-list new-list base old/r))) 
+    (and (eq? base old) (eq? base old/r) #;(eq? base new))))
+
+(mat test-fxmap-remove/base
+    (test-fxmap-remove/base 3 1)
+    (test-fxmap-remove/base 3 1)
+    (test-fxmap-remove/base 3 1)
+    (test-fxmap-remove/base 5 1)
+    (test-fxmap-remove/base 5 1)
+    (test-fxmap-remove/base 5 1)
+
+    (test-fxmap-remove/base 3 2)
+    (test-fxmap-remove/base 3 2)
+    (test-fxmap-remove/base 3 2)
+    (test-fxmap-remove/base 5 2)
+    (test-fxmap-remove/base 5 2)
+    (test-fxmap-remove/base 5 2)
+
+    (test-fxmap-remove/base 3 3)
+    (test-fxmap-remove/base 3 3)
+    (test-fxmap-remove/base 3 3)
+    (test-fxmap-remove/base 5 3)
+    (test-fxmap-remove/base 5 3)
+    (test-fxmap-remove/base 5 3)
+
+    (test-fxmap-remove/base 50 30)
+    (test-fxmap-remove/base 50 30)
+    (test-fxmap-remove/base 50 30)
+    (test-fxmap-remove/base 50 50)
+    (test-fxmap-remove/base 50 50)
+    (test-fxmap-remove/base 50 50)
+    (test-fxmap-remove/base 50 80)
+    (test-fxmap-remove/base 50 80)
+    (test-fxmap-remove/base 50 80)
+  )
+
+(define (test-fxmap-reset/base B N)
+  (let*([base-list (map (lambda (x) (random 100)) (make-list B))]
+        [new-list (map (lambda (x) (random 100)) (make-list N))]
+        [base (let ([ret empty-fxmap])
+                (for-each (lambda (x) (set! ret (fxmap-set ret x '!))) base-list)
+                (for-each (lambda (x) (set! ret (fxmap-set ret x '!))) new-list)
+                ret)]
+        [new (let ([ret base])
+                (for-each (lambda (x) (set! ret (fxmap-set ret x '?))) new-list)
+                ret)]
+        [old (let ([ret new])
+                (for-each (lambda (x) (set! ret (fxmap-reset/base ret x base))) new-list)
+                ret)]
+        [old/r (let ([ret new])
+                 (for-each (lambda (x) (set! ret (fxmap-reset/base ret x base))) (reverse new-list))
+                 ret)])
+    (when (not (eq?  base old))
+      (error 'e (list 'd base-list new-list base old))) 
+    (when (not (eq?  base old/r))
+      (error 'e (list 'd/r base-list new-list base old/r))) 
+    (and (eq? base old) (eq? base old/r) #;(eq? base new))))
+
+(mat test-fxmap-reset/base
+    (test-fxmap-reset/base 3 1)
+    (test-fxmap-reset/base 3 1)
+    (test-fxmap-reset/base 3 1)
+    (test-fxmap-reset/base 5 1)
+    (test-fxmap-reset/base 5 1)
+    (test-fxmap-reset/base 5 1)
+
+    (test-fxmap-reset/base 3 2)
+    (test-fxmap-reset/base 3 2)
+    (test-fxmap-reset/base 3 2)
+    (test-fxmap-reset/base 5 2)
+    (test-fxmap-reset/base 5 2)
+    (test-fxmap-reset/base 5 2)
+
+    (test-fxmap-reset/base 3 3)
+    (test-fxmap-reset/base 3 3)
+    (test-fxmap-reset/base 3 3)
+    (test-fxmap-reset/base 5 3)
+    (test-fxmap-reset/base 5 3)
+    (test-fxmap-reset/base 5 3)
+
+    (test-fxmap-reset/base 50 30)
+    (test-fxmap-reset/base 50 30)
+    (test-fxmap-reset/base 50 30)
+    (test-fxmap-reset/base 50 50)
+    (test-fxmap-reset/base 50 50)
+    (test-fxmap-reset/base 50 50)
+    (test-fxmap-reset/base 50 80)
+    (test-fxmap-reset/base 50 80)
+    (test-fxmap-reset/base 50 80)
+  )
