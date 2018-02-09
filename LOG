@@ -879,3 +879,7 @@
   $verify-ftype-address if the address expression is a call to
   ftype-pointer-address.
     ftype.ss
+- Change signature of map and for-each
+  After the reduction of (#2%map p '()), p is discarded without
+  a check that it is a procedure.
+    primdata.ss, cp0.ss
