@@ -14,11 +14,6 @@
 ;;; limitations under the License.
 
 (update-record-type (primref make-primref primref?) (primref-name primref-flags primref-arity primref-signatures) ()
-  ; new record definition, with stub for missing accessor
-  (define-record-type primref
-    (nongenerative #{primref a0xltlrcpeygsahopkplcn-3})
-    (sealed #t)
-    (fields name flags arity signatures))
   ; old record definition, with stub for missing accessor
   (begin
     (define-record-type primref
@@ -26,6 +21,11 @@
       (sealed #t)
       (fields name flags arity))
     (define (primref-signatures x) 'signature))
+  ; new record definition, with stub for missing accessor
+  (define-record-type primref
+    (nongenerative #{primref a0xltlrcpeygsahopkplcn-3})
+    (sealed #t)
+    (fields name flags arity signatures))
 )
 
 (define primref-level
