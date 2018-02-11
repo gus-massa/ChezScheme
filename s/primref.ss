@@ -13,20 +13,10 @@
 ;;; See the License for the specific language governing permissions and
 ;;; limitations under the License.
 
-(update-record-type (primref make-primref primref?) (primref-name primref-flags primref-arity primref-signatures) ()
-  ; old record definition, with stub for missing accessor
-  (begin
-    (define-record-type primref
-      (nongenerative #{primref a0xltlrcpeygsahopkplcn-2})
-      (sealed #t)
-      (fields name flags arity))
-    (define (primref-signatures x) 'signature))
-  ; new record definition, with stub for missing accessor
-  (define-record-type primref
-    (nongenerative #{primref a0xltlrcpeygsahopkplcn-3})
-    (sealed #t)
-    (fields name flags arity signatures))
-)
+(define-record-type primref
+  (nongenerative #{primref a0xltlrcpeygsahopkplcn-3})
+  (sealed #t)
+  (fields name flags arity signatures))
 
 (define primref-level
   (lambda (pr)
