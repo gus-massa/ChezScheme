@@ -24,8 +24,8 @@
             [arity (and (not (null? arity)) arity)])
         ($sputprop prim '*flags* flags)
         (when (any-set? (prim-mask (or primitive system)) flags)
-          ($sputprop prim '*prim2* (make-primref prim flags arity #;signatures))
-          ($sputprop prim '*prim3* (make-primref prim (fxlogor flags (prim-mask unsafe)) arity #;signatures))))))
+          ($sputprop prim '*prim2* (make-primref prim flags arity signatures))
+          ($sputprop prim '*prim3* (make-primref prim (fxlogor flags (prim-mask unsafe)) arity signatures))))))
 
   (define-syntax setup
     (lambda (x)
