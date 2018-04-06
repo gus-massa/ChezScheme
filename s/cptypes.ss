@@ -134,7 +134,7 @@ Notes:
    (fields ref)
    (nongenerative #{pred-$record/ref zc0e8e4cs8scbwhdj7qpad6k3-0})
    (sealed #t))
- 
+
   (module (pred-env-empty
            pred-env-add pred-env-remove/base pred-env-lookup
            pred-env-intersect/base pred-env-union/super-base
@@ -179,7 +179,6 @@ Notes:
     ; 'box _and_ 'vector -> 'bottom
     ; 'number _and_ 'exact-integer -> 'exact-integer
     (define (pred-env-intersect/base types from base)
-      #;(display (list (fxmap-changes from) (fxmap-changes types)))
       (cond
         [(fx> (fxmap-changes from) (fxmap-changes types))
          (pred-env-intersect/base from types base)]
@@ -386,7 +385,7 @@ Notes:
       [eof-object? eof-rec]
       [bwp-object? bwp-rec]
       [list? (if (not extend?) null-rec 'null-or-pair)]
-      [else ((if extend? cdr car);---------------------------------------------------
+      [else ((if extend? cdr car)
              (case name
                [(record? record-type-descriptor?) '(bottom . $record)]
                [(integer? rational?) '(exact-integer . real)]
@@ -423,7 +422,7 @@ Notes:
       [eof-object eof-rec]
       [bwp-object bwp-rec]
       [list (if (not extend?) null-rec 'null-or-pair)] ;fake-predicate
-      [else ((if extend? cdr car);---------------------------------------------------
+      [else ((if extend? cdr car)
              (case name
                [(record rtd) '(bottom . $record)]
                [(bit length ufixnum pfixnum) '(bottom . fixnum)]
@@ -459,7 +458,7 @@ Notes:
                      (nanopass-case (Lsrc Expr) y
                        [(quote ,d1)
                         (nanopass-case (Lsrc Expr) x
-                          [(quote ,d2) (eqv? d1 d2)] #;CHECK ;eq?/eqv?/equal?
+                          [(quote ,d2) (eqv? d1 d2)]
                           [else #f])]
                        [else #f]))]
                [(pred-$record/rtd? y)
@@ -523,7 +522,7 @@ Notes:
                    (predicate-implies? y '$record)))
          (not (and (pred-$record/ref? y)
                    (predicate-implies? x '$record)))
-         ; boolean and true may be #t
+         ; boolean and true may be a #t
          (not (and (eq? x 'boolean)
                    (eq? y 'true)))
          (not (and (eq? y 'boolean)
@@ -934,7 +933,7 @@ Notes:
                        (list (if (null? r*) 'null 'pair))
                        (cons (car r*) (f (fx- i 1) (cdr r*))))))))
            (lambda () (values ir 'bottom #f #f #f))))]
-      [(call ,preinfo ,[cptypes : e0 'value types -> e0 ret0 types0 t-types0 f-types0] 
+      [(call ,preinfo ,[cptypes : e0 'value types -> e0 ret0 types0 t-types0 f-types0]
              ,[cptypes : e* 'value types -> e* r* t* t-t* f-t*]  ...)
        (values `(call ,preinfo ,e0 ,e* ...)
                #f (pred-env-add/ref
@@ -999,7 +998,7 @@ Notes:
                (pred-env-add/ref types e '$record)
                #f #f)]
       [(record-set! ,rtd ,type ,index ,[cptypes : e1 'value types -> e1 ret1 types1 t-types1 f-types1]
-                    ,[cptypes : e2 'value types -> e2 ret2 types2 t-types2 f-types2]) ;can they be reordered?
+                    ,[cptypes : e2 'value types -> e2 ret2 types2 t-types2 f-types2])
        (values `(record-set! ,rtd ,type ,index ,e1 ,e2)
                void-rec
                (pred-env-add/ref (pred-env-intersect/base types1 types2 types)
@@ -1014,15 +1013,14 @@ Notes:
       [(immutable-list (,[cptypes : e* 'value types -> e* r* t* t-t* f-t*] ...)
                        ,[cptypes : e 'value types -> e ret types t-types f-types])
        (values `(immutable-list (,e*  ...) ,e)
-               ret types #f #f)] #;CHECK
+               ret types #f #f)]
       [(moi) (values ir #f #f #f #f)]
       [(pariah) (values ir void-rec #f #f #f)]
       [(cte-optimization-loc ,box ,[cptypes : e 'value types -> e ret types t-types f-types])
        (values `(cte-optimization-loc ,box ,e)
-               ret types #f #f)] #;CHECK
+               ret types #f #f)]
       [(cpvalid-defer ,e) (sorry! who "cpvalid leaked a cpvalid-defer form ~s" ir)]
       [(profile ,src) (values ir #f #f #f #f)]
-      #;[else (values ir #f #f #f #f)]
       [else ($oops who "unrecognized record ~s" ir)])
     (Expr ir ctxt types))
 
