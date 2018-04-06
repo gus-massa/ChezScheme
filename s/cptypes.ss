@@ -46,9 +46,9 @@ Notes:
               * a nanopass-quoted value that is okay-to-copy?, like
                 `(quote 0) `(quote 5) `(quote #t) `(quote '())
                 (this doesn't includes `(quote <record-type-descriptor>))
-              * a [normal] list ($record/rtd <rtd>) to signal that it's a
+              * a record #[pred-$record/rtd <rtd>] to signal that it's a
                 record of type <rtd>
-              * a [normal] list ($record/ref <ref>) to signal that it's a
+              * a record #[pred-$record/ref <ref>] to signal that it's a
                 record of a type that is stored in the variable <ref>
                 (these may collide with other records)
               * TODO?: add something to indicate that x is a procedure to
@@ -125,6 +125,16 @@ Notes:
               (make-seq ctxt (car e*) (make-seq* ctxt (cdr e*))))))
   )
 
+ (define-record-type pred-$record/rtd
+   (fields rtd)
+   (nongenerative #{pred-$record/rtd wnquzwrp8wl515lhz2url8sjc-0})
+   (sealed #t))
+
+ (define-record-type pred-$record/ref
+   (fields ref)
+   (nongenerative #{pred-$record/ref zc0e8e4cs8scbwhdj7qpad6k3-0})
+   (sealed #t))
+ 
   (module (pred-env-empty
            pred-env-add pred-env-remove/base pred-env-lookup
            pred-env-intersect/base pred-env-union/super-base
@@ -337,10 +347,10 @@ Notes:
        (nanopass-case (Lsrc Expr) rtd
          [(quote ,d)
           (guard (record-type-descriptor? d))
-          (list '$record/rtd d)]
+          (make-pred-$record/rtd d)]
          [(ref ,maybe-src ,x)
           (guard (not (prelex-assigned x)))
-          (list '$record/ref x)]
+          (make-pred-$record/ref x)]
          [(record-type ,rtd ,e)
           (rtd->record-predicate e)]
          [else '$record])]
@@ -452,24 +462,22 @@ Notes:
                           [(quote ,d2) (eqv? d1 d2)] #;CHECK ;eq?/eqv?/equal?
                           [else #f])]
                        [else #f]))]
-               [(and (pair? y) (pair? (cdr y)))
-                (and (pair? x) (pair? (cdr x))
-                     (cond
-                       [(eq? (car y) '$record/rtd)
-                        (and (eq? (car x) '$record/rtd)
-                             (let ([y-rtd (cadr y)])
-                               (cond
-                                 [(record-type-sealed? y-rtd)
-                                  (eqv? (cadr x) y-rtd)]
-                                 [else
-                                   (let loop ([x-rtd (cadr x)])
-                                     (or (eqv? x-rtd y-rtd)
-                                         (let ([xp (record-type-parent x-rtd)])
-                                           (and xp (loop xp)))))])))]
-                       [(eq? (car y) '$record/ref)
-                        (and (eq? (car x) '$record/ref)
-                             (eq? (cadr x) (cadr y)))]
-                       [else #f]))]
+               [(pred-$record/rtd? y)
+                (and (pred-$record/rtd? x)
+                     (let ([x-rtd (pred-$record/rtd-rtd x)]
+                           [y-rtd (pred-$record/rtd-rtd y)])
+                       (cond
+                         [(record-type-sealed? y-rtd)
+                          (eqv? x-rtd y-rtd)]
+                         [else
+                          (let loop ([x-rtd x-rtd])
+                            (or (eqv? x-rtd y-rtd)
+                                (let ([xp-rtd (record-type-parent x-rtd)])
+                                  (and xp-rtd (loop xp-rtd)))))])))]
+               [(pred-$record/ref? y)
+                (and (pred-$record/ref? x)
+                     (eq? (pred-$record/ref-ref x)
+                          (pred-$record/ref-ref y)))]
                [(case y
                   [(null-or-pair) (or (eq? x 'pair)
                                       (check-constant-is? x null?))]
@@ -496,8 +504,8 @@ Notes:
                   [(true) (and (not (check-constant-is? x not))
                                (not (eq? x 'boolean))
                                (not (eq? x 'ptr)))] ; only false-rec, boolean and ptr may be `#f
-                  [($record) (or (and (pair? x) (eq? (car x) '$record/rtd))
-                                 (and (pair? x) (eq? (car x) '$record/ref))
+                  [($record) (or (pred-$record/rtd? x)
+                                 (pred-$record/ref? x)
                                  (check-constant-is? x #3%$record?))]
                   [(vector) (check-constant-is? x vector?)] ; i.e. '#()
                   [(string) (check-constant-is? x string?)] ; i.e. ""
@@ -510,14 +518,12 @@ Notes:
   (define (predicate-implies-not? x y)
     (and x
          y
-         ; a $record/ref may be any other kind or record
-         (not (and (pair? x)
-                   (eq? (car x) '$record/ref)
+         ; a pred-$record/ref may be any other kind or record
+         (not (and (pred-$record/ref? x)
                    (predicate-implies? y '$record)))
-         (not (and (pair? y)
-                   (eq? (car y) '$record/ref)
+         (not (and (pred-$record/ref? y)
                    (predicate-implies? x '$record)))
-         ; boolean and true may be #f
+         ; boolean and true may be #t
          (not (and (eq? x 'boolean)
                    (eq? y 'true)))
          (not (and (eq? y 'boolean)
