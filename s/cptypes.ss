@@ -724,11 +724,7 @@ Notes:
        (values `(set! ,maybe-src ,x ,e) void-rec types #f #f)]
       [(call ,preinfo ,pr ,[cptypes : e* 'value types -> e* r* t* t-t* f-t*] ...)
        (let* ([t (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)]
-              [ret (primref->result-predicate pr)]
-              ;; AWK: this seems a bit premature, in some cases ir is not used,
-              ;; AWK: meaning we are constructing this for no reason, and in
-              ;; AWK: some cases we are reconstructing exactly this call
-              [ir `(call ,preinfo ,pr ,e* ...)])
+              [ret (primref->result-predicate pr)])
          (let-values ([(ret t)
                        (let loop ([e* e*] [r* r*] [n 0] [ret ret] [t t])
                          (if (null? e*)
@@ -743,9 +739,9 @@ Notes:
                                      (pred-env-add/ref t (car e*) pred)))))])
            (cond
              [(predicate-implies? ret 'bottom)
-              (values ir ret t #f #f)]
+              (values `(call ,preinfo ,pr ,e* ...) ret t #f #f)]
              [(not (arity-okay? (primref-arity pr) (length e*)))
-              (values ir 'bottom t #f #f)]
+              (values `(call ,preinfo ,pr ,e* ...) 'bottom t #f #f)]
              [(and (fx= (length e*) 2)
                    (or (eq? (primref-name pr) 'eq?)
                        (eq? (primref-name pr) 'eqv?)))
@@ -759,7 +755,9 @@ Notes:
                      (values (make-seq ctxt (make-seq 'effect e1 e2) false-rec)
                              false-rec t #f #f)]
                     [else
-                     (values ir ret types
+                     (values `(call ,preinfo ,pr ,e* ...)
+                             ret
+                             types
                              (and (eq? ctxt 'test)
                                   (pred-env-add/ref
                                    (pred-env-add/ref t e1 r2)
@@ -780,13 +778,15 @@ Notes:
                           (values (make-seq ctxt (car e*) false-rec)
                                   false-rec t #f #f)]
                          [else
-                          (values ir ret types
+                          (values `(call ,preinfo ,pr ,e* ...)
+                                  ret
+                                  types
                                   (and (eq? ctxt 'test)
                                        (pred-env-add/ref t (car e*) pred))
                                   #f)]))]))]
              [(and (fx>= (length e*) 1)
                    (eq? (primref-name pr) '$record))
-              (values ir (rtd->record-predicate (car e*)) t #f #f)]
+              (values `(call ,preinfo ,pr ,e* ...) (rtd->record-predicate (car e*)) t #f #f)]
              [(and (fx= (length e*) 2)
                    (or (eq? (primref-name pr) 'record?)
                        (eq? (primref-name pr) '$sealed-record?)))
@@ -823,7 +823,9 @@ Notes:
                                   (pred-env-add/ref types (car e*) pred))
                              #f))]
                   [else
-                   (values ir ret types
+                   (values `(call ,preinfo ,pr ,e* ...)
+                           ret
+                           types
                            (and (eq? ctxt 'test)
                                 (pred-env-add/ref types (car e*) pred))
                            #f)]))]
@@ -843,7 +845,7 @@ Notes:
                    (values `(call ,preinfo ,pr ,e* ...)
                            ret t #f #f))]
                 [else
-                 (values ir ret t #f #f)])]
+                 (values `(call ,preinfo ,pr ,e* ...) ret t #f #f)])]
              [(and (fx= (length e*) 1)
                    (eq? (primref-name pr) 'inexact?))
               (cond
@@ -859,7 +861,7 @@ Notes:
                    (values `(call ,preinfo ,pr ,e* ...)
                            ret t #f #f))]
                 [else
-                 (values ir ret t #f #f)])]
+                 (values `(call ,preinfo ,pr ,e* ...) ret t #f #f)])]
              [(and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
                    (all-set? (prim-mask safeongoodargs) (primref-flags pr))
                    (andmap (lambda (r n)
@@ -870,7 +872,7 @@ Notes:
                  (values `(call ,preinfo ,pr ,e* ...)
                          ret types #f #f))]
              [else
-              (values ir ret t #f #f)])))]
+              (values `(call ,preinfo ,pr ,e* ...) ret t #f #f)])))]
       [(case-lambda ,preinfo ,cl* ...)
        (let ([cl* (map (lambda (cl)
                         (nanopass-case (Lsrc CaseLambdaClause) cl
