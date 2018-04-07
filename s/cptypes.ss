@@ -29,14 +29,15 @@ Notes:
    + results
      ir: the optimized expression
      ret: type of the result of the expression
-     types: like the types in the argument, with addition of the type discover
-            during the optimization of the expression
+     types: like the types in the argument, with the addition of the types
+            discover during the optimization of the expression
      t-types: types to be used in case the expression is not #f, to be used in
               the "then" branch of an if.
-              If left as #f it will be automatically replaced with a copy of
-              types by the wrapper.
               This is usually only filled in a text context.
-     f-types: idem for the "else" branch. (if x (something) (here x is #f))
+              It may be #f, and in this case the `if` clause will use the value
+              of types as a replacement.
+              (Also the clauses for `let[rec/*]` handle the #f case specialy.)
+     f-types: idem for the "else" branch. (if x (something) <here x is #f>)
 
 
  - predicate: They may be:
@@ -621,19 +622,19 @@ Notes:
   (define (primref->unsafe-primref pr)
     (lookup-primref 3 (primref-name pr)))
 
-  (define-pass cptypes/raw : Lsrc (ir ctxt types) -> Lsrc (ret types t-types f-types)
+  (define-pass cptypes : Lsrc (ir ctxt types) -> Lsrc (ret types t-types f-types)
     (Expr : Expr (ir ctxt types) -> Expr (ret types t-types f-types)
       [(quote ,d)
-       (values ir (datum->predicate d ir) #f #f #f)]
+       (values ir (datum->predicate d ir) types #f #f)]
       [(ref ,maybe-src ,x)
        (case ctxt
          [(test)
           (let ([t (pred-env-lookup types x)])
             (cond
               [(predicate-implies-not? t false-rec)
-               (values true-rec true-rec #f #f #f)]
+               (values true-rec true-rec types #f #f)]
               [(predicate-implies? t false-rec)
-               (values false-rec false-rec #f #f #f)]
+               (values false-rec false-rec types #f #f)]
               [else
                (values ir t
                       types
@@ -645,11 +646,11 @@ Notes:
               [(Lsrc? t)
                (nanopass-case (Lsrc Expr) t
                  [(quote ,d)
-                  (values t t #f #f #f)]
+                  (values t t types #f #f)]
                  [else
-                  (values ir t #f #f #f)])]
+                  (values ir t types #f #f)])]
                [else
-                (values ir t #f #f #f)]))])]
+                (values ir t types #f #f)]))])]
       [(seq ,[cptypes : e1 'effect types -> e1 ret1 types t-types f-types] ,e2)
        (cond
          [(predicate-implies? ret1 'bottom)
@@ -671,10 +672,16 @@ Notes:
                         (cptypes e3 ctxt types1)])
             (values (make-seq ctxt e1 e3) ret types t-types f-types))]
          [else
-          (let-values ([(e2 ret2 types2 t-types2 f-types2)
-                        (cptypes e2 ctxt t-types1)]
-                       [(e3 ret3 types3 t-types3 f-types3)
-                        (cptypes e3 ctxt f-types1)])
+          (let*-values ([(t-types1) (or t-types1 types1)]
+                        [(f-types1) (or f-types1 types1)]
+                        [(e2 ret2 types2 t-types2 f-types2)
+                         (cptypes e2 ctxt t-types1)]
+                        [(t-types2) (or t-types2 types2)]
+                        [(f-types2) (or f-types2 types2)]
+                        [(e3 ret3 types3 t-types3 f-types3)
+                         (cptypes e3 ctxt f-types1)]
+                        [(t-types3) (or t-types3 types3)]
+                        [(f-types3) (or f-types3 types3)])
             (let ([ir `(if ,e1 ,e2 ,e3)])
               (cond
                 [(predicate-implies? ret2 'bottom) ;check bottom first
@@ -888,7 +895,7 @@ Notes:
                              (with-output-language (Lsrc CaseLambdaClause)
                                `(clause (,x* ...) ,interface ,body)))]))
                        cl*)])
-         (values `(case-lambda ,preinfo ,cl* ...) 'procedure #f #f #f))]
+         (values `(case-lambda ,preinfo ,cl* ...) 'procedure types #f #f))]
       [(call ,preinfo (case-lambda ,preinfo2 (clause (,x** ...) ,interface* ,body*) ...)
              ,[cptypes : e* 'value types -> e* r* t* t-t* f-t*] ...)
        ;; pulled from cpnanopass
@@ -912,9 +919,11 @@ Notes:
                          (cptypes body ctxt t)])
              (let* ([new-types (fold-left (lambda (f x) (pred-env-remove/base f x types)) n-types x*)]
                     [t-types (and (eq? ctxt 'test)
+                                  t-types
                                   (not (eq? n-types t-types))
                                   (fold-left (lambda (f x) (pred-env-remove/base f x new-types)) t-types x*))]
                     [f-types (and (eq? ctxt 'test)
+                                  f-types
                                   (not (eq? n-types f-types))
                                   (fold-left (lambda (f x) (pred-env-remove/base f x new-types)) f-types x*))])
                (for-each (lambda (x) (prelex-operand-set! x #f)) x*)
@@ -932,14 +941,17 @@ Notes:
                    (if (fx= i 0)
                        (list (if (null? r*) 'null 'pair))
                        (cons (car r*) (f (fx- i 1) (cdr r*))))))))
-           (lambda () (values ir 'bottom #f #f #f))))]
+           (lambda () (values ir 'bottom types #f #f))))]
       [(call ,preinfo ,[cptypes : e0 'value types -> e0 ret0 types0 t-types0 f-types0]
              ,[cptypes : e* 'value types -> e* r* t* t-t* f-t*]  ...)
        (values `(call ,preinfo ,e0 ,e* ...)
-               #f (pred-env-add/ref
-                    (pred-env-intersect/base
-                      (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)
-                      types0 types) e0 'procedure) #f #f)]
+               #f
+               (pred-env-add/ref
+                 (pred-env-intersect/base
+                   (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)
+                   types0 types)
+                 e0 'procedure)
+               #f #f)]
       [(letrec ((,x* ,[cptypes : e* 'value types -> e* r* t* t-t* t-f*]) ...) ,body)
        (let* ([t (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)]
               [t (fold-left pred-env-add t x* r*)])
@@ -947,9 +959,11 @@ Notes:
                       (cptypes body ctxt t)])
           (let* ([new-types (fold-left (lambda (f x) (pred-env-remove/base f x types)) n-types x*)]
                  [t-types (and (eq? ctxt 'test)
+                               t-types
                                (not (eq? n-types t-types))
                                (fold-left (lambda (f x) (pred-env-remove/base f x new-types)) t-types x*))]
                  [f-types (and (eq? ctxt 'test)
+                               f-types
                                (not (eq? n-types f-types))
                                (fold-left (lambda (f x) (pred-env-remove/base f x new-types)) f-types x*))])
             (for-each (lambda (x) (prelex-operand-set! x #f)) x*)
@@ -968,9 +982,11 @@ Notes:
                       (cptypes body ctxt types)])
           (let* ([new-types (fold-left (lambda (f x) (pred-env-remove/base f x types)) n-types x*)]
                  [t-types (and (eq? ctxt 'test)
+                               t-types
                                (not (eq? n-types t-types))
                                (fold-left (lambda (f x) (pred-env-remove/base f x new-types)) t-types x*))]
                  [f-types (and (eq? ctxt 'test)
+                               f-types
                                (not (eq? n-types f-types))
                                (fold-left (lambda (f x) (pred-env-remove/base f x new-types)) f-types x*))])
             (for-each (lambda (x) (prelex-operand-set! x #f)) x*)
@@ -979,7 +995,7 @@ Notes:
       [,pr
        (values ir
                (and (all-set? (prim-mask proc) (primref-flags pr)) 'procedure)
-               #f #f #f)]
+               types #f #f)]
       [(foreign ,conv ,name ,[cptypes : e 'value types -> e ret types t-types f-types] (,arg-type* ...) ,result-type)
        (values `(foreign ,conv ,name ,e (,arg-type* ...) ,result-type)
                #f types #f #f)]
@@ -1014,24 +1030,16 @@ Notes:
                        ,[cptypes : e 'value types -> e ret types t-types f-types])
        (values `(immutable-list (,e*  ...) ,e)
                ret types #f #f)]
-      [(moi) (values ir #f #f #f #f)]
-      [(pariah) (values ir void-rec #f #f #f)]
+      [(moi) (values ir #f types #f #f)]
+      [(pariah) (values ir void-rec types #f #f)]
       [(cte-optimization-loc ,box ,[cptypes : e 'value types -> e ret types t-types f-types])
        (values `(cte-optimization-loc ,box ,e)
                ret types #f #f)]
       [(cpvalid-defer ,e) (sorry! who "cpvalid leaked a cpvalid-defer form ~s" ir)]
-      [(profile ,src) (values ir #f #f #f #f)]
+      [(profile ,src) (values ir #f types #f #f)]
       [else ($oops who "unrecognized record ~s" ir)])
     (Expr ir ctxt types))
 
-  (define (cptypes ir ctxt types)
-    (let-values ([(ir ret r-types t-types f-types)
-                  (cptypes/raw ir ctxt types)])
-      (values ir
-              ret
-              (or r-types types)
-              (or t-types r-types types)
-              (or f-types r-types types))))
   (lambda (ir)
     (let-values ([(ir ret types t-types f-types)
                   (cptypes ir 'value pred-env-empty)])
