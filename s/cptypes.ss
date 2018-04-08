@@ -651,7 +651,7 @@ Notes:
                   (values ir t types #f #f)])]
                [else
                 (values ir t types #f #f)]))])]
-      [(seq ,[cptypes : e1 'effect types -> e1 ret1 types t-types f-types] ,e2)
+      [(seq ,[e1 'effect types -> e1 ret1 types t-types f-types] ,e2)
        (cond
          [(predicate-implies? ret1 'bottom)
           (values e1 ret1 types #f #f)]
@@ -659,7 +659,7 @@ Notes:
           (let-values ([(e2 ret types t-types f-types)
                         (cptypes e2 ctxt types)])
             (values (make-seq ctxt e1 e2) ret types t-types f-types))])]
-      [(if ,[cptypes : e1 'test types -> e1 ret1 types1 t-types1 f-types1] ,e2 ,e3)
+      [(if ,[e1 'test types -> e1 ret1 types1 t-types1 f-types1] ,e2 ,e3)
        (cond
          [(predicate-implies? ret1 'bottom) ;check bottom first
           (values e1 ret1 types #f #f)]
@@ -732,9 +732,9 @@ Notes:
                                                          f-types3 f-types1
                                                          types1
                                                          new-types)])))])))])]
-      [(set! ,maybe-src ,x ,[cptypes : e 'value types -> e ret types t-types f-types])
+      [(set! ,maybe-src ,x ,[e 'value types -> e ret types t-types f-types])
        (values `(set! ,maybe-src ,x ,e) void-rec types #f #f)]
-      [(call ,preinfo ,pr ,[cptypes : e* 'value types -> e* r* t* t-t* f-t*] ...)
+      [(call ,preinfo ,pr ,[e* 'value types -> e* r* t* t-t* f-t*] ...)
        (let* ([t (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)]
               [ret (primref->result-predicate pr)])
          (let-values ([(ret t)
@@ -897,7 +897,7 @@ Notes:
                        cl*)])
          (values `(case-lambda ,preinfo ,cl* ...) 'procedure types #f #f))]
       [(call ,preinfo (case-lambda ,preinfo2 (clause (,x** ...) ,interface* ,body*) ...)
-             ,[cptypes : e* 'value types -> e* r* t* t-t* f-t*] ...)
+             ,[e* 'value types -> e* r* t* t-t* f-t*] ...)
        ;; pulled from cpnanopass
        (define find-matching-clause
          (lambda (len x** interface* body* kfixed kvariable kfail)
@@ -942,8 +942,8 @@ Notes:
                        (list (if (null? r*) 'null 'pair))
                        (cons (car r*) (f (fx- i 1) (cdr r*))))))))
            (lambda () (values ir 'bottom types #f #f))))]
-      [(call ,preinfo ,[cptypes : e0 'value types -> e0 ret0 types0 t-types0 f-types0]
-             ,[cptypes : e* 'value types -> e* r* t* t-t* f-t*]  ...)
+      [(call ,preinfo ,[e0 'value types -> e0 ret0 types0 t-types0 f-types0]
+             ,[e* 'value types -> e* r* t* t-t* f-t*]  ...)
        (values `(call ,preinfo ,e0 ,e* ...)
                #f
                (pred-env-add/ref
@@ -952,7 +952,7 @@ Notes:
                    types0 types)
                  e0 'procedure)
                #f #f)]
-      [(letrec ((,x* ,[cptypes : e* 'value types -> e* r* t* t-t* t-f*]) ...) ,body)
+      [(letrec ((,x* ,[e* 'value types -> e* r* t* t-t* t-f*]) ...) ,body)
        (let* ([t (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)]
               [t (fold-left pred-env-add t x* r*)])
         (let-values ([(body ret n-types t-types f-types)
@@ -996,43 +996,43 @@ Notes:
        (values ir
                (and (all-set? (prim-mask proc) (primref-flags pr)) 'procedure)
                types #f #f)]
-      [(foreign ,conv ,name ,[cptypes : e 'value types -> e ret types t-types f-types] (,arg-type* ...) ,result-type)
+      [(foreign ,conv ,name ,[e 'value types -> e ret types t-types f-types] (,arg-type* ...) ,result-type)
        (values `(foreign ,conv ,name ,e (,arg-type* ...) ,result-type)
                #f types #f #f)]
-      [(fcallable ,conv ,[cptypes : e 'value types -> e ret types t-types f-types] (,arg-type* ...) ,result-type)
+      [(fcallable ,conv ,[e 'value types -> e ret types t-types f-types] (,arg-type* ...) ,result-type)
        (values `(fcallable ,conv ,e (,arg-type* ...) ,result-type)
                #f types #f #f)]
-      [(record ,rtd ,[cptypes : rtd-expr 'value types -> rtd-expr ret-re types-re t-types-re f-types-re]
-               ,[cptypes : e* 'value types -> e* r* t* t-t* f-t*] ...)
+      [(record ,rtd ,[rtd-expr 'value types -> rtd-expr ret-re types-re t-types-re f-types-re]
+               ,[e* 'value types -> e* r* t* t-t* f-t*] ...)
        (values `(record ,rtd ,rtd-expr ,e* ...)
                (rtd->record-predicate rtd-expr)
                (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)
                #f #f)]
-      [(record-ref ,rtd ,type ,index ,[cptypes : e 'value types -> e ret types t-types f-types])
+      [(record-ref ,rtd ,type ,index ,[e 'value types -> e ret types t-types f-types])
        (values `(record-ref ,rtd ,type ,index ,e)
                #f
                (pred-env-add/ref types e '$record)
                #f #f)]
-      [(record-set! ,rtd ,type ,index ,[cptypes : e1 'value types -> e1 ret1 types1 t-types1 f-types1]
-                    ,[cptypes : e2 'value types -> e2 ret2 types2 t-types2 f-types2])
+      [(record-set! ,rtd ,type ,index ,[e1 'value types -> e1 ret1 types1 t-types1 f-types1]
+                    ,[e2 'value types -> e2 ret2 types2 t-types2 f-types2])
        (values `(record-set! ,rtd ,type ,index ,e1 ,e2)
                void-rec
                (pred-env-add/ref (pred-env-intersect/base types1 types2 types)
                                  e1 '$record)
                #f #f)]
-      [(record-type ,rtd ,[cptypes : e 'value types -> e ret types t-types f-types])
+      [(record-type ,rtd ,[e 'value types -> e ret types t-types f-types])
        (values `(record-type ,rtd ,e)
                #f types #f #f)]
-      [(record-cd ,rcd ,rtd-expr ,[cptypes : e 'value types -> e ret types t-types f-types])
+      [(record-cd ,rcd ,rtd-expr ,[e 'value types -> e ret types t-types f-types])
        (values `(record-cd ,rcd ,rtd-expr ,e)
                #f types #f #f)]
-      [(immutable-list (,[cptypes : e* 'value types -> e* r* t* t-t* f-t*] ...)
-                       ,[cptypes : e 'value types -> e ret types t-types f-types])
+      [(immutable-list (,[e* 'value types -> e* r* t* t-t* f-t*] ...)
+                       ,[e 'value types -> e ret types t-types f-types])
        (values `(immutable-list (,e*  ...) ,e)
                ret types #f #f)]
       [(moi) (values ir #f types #f #f)]
       [(pariah) (values ir void-rec types #f #f)]
-      [(cte-optimization-loc ,box ,[cptypes : e 'value types -> e ret types t-types f-types])
+      [(cte-optimization-loc ,box ,[e 'value types -> e ret types t-types f-types])
        (values `(cte-optimization-loc ,box ,e)
                ret types #f #f)]
       [(cpvalid-defer ,e) (sorry! who "cpvalid leaked a cpvalid-defer form ~s" ir)]
