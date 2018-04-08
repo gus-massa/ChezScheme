@@ -126,15 +126,15 @@ Notes:
               (make-seq ctxt (car e*) (make-seq* ctxt (cdr e*))))))
   )
 
- (define-record-type pred-$record/rtd
-   (fields rtd)
-   (nongenerative #{pred-$record/rtd wnquzwrp8wl515lhz2url8sjc-0})
-   (sealed #t))
+  (define-record-type pred-$record/rtd
+    (fields rtd)
+    (nongenerative #{pred-$record/rtd wnquzwrp8wl515lhz2url8sjc-0})
+    (sealed #t))
 
- (define-record-type pred-$record/ref
-   (fields ref)
-   (nongenerative #{pred-$record/ref zc0e8e4cs8scbwhdj7qpad6k3-0})
-   (sealed #t))
+  (define-record-type pred-$record/ref
+    (fields ref)
+    (nongenerative #{pred-$record/ref zc0e8e4cs8scbwhdj7qpad6k3-0})
+    (sealed #t))
 
   (module (pred-env-empty
            pred-env-add pred-env-remove/base pred-env-lookup
