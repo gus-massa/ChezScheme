@@ -54,6 +54,15 @@
    (nongenerative #{$empty pfwk1nal7cs5dornqtzvda91m-0})
    (sealed #t))
 
+ (define-syntax let-branch
+   (syntax-rules ()
+     [(_ ([(p m l r) d] ...) exp ...)
+      (let ([p ($branch-prefix d)] ...
+            [m ($branch-mask d)] ...
+            [l ($branch-left d)] ...
+            [r ($branch-right d)] ...)
+        exp ...)]))
+
  ;; constants & empty
 
  (define empty-fxmap (make-$empty))
@@ -381,14 +390,86 @@
     [else ; (eq? empty-fxmap d1)
      (g2 d2)]))
 
- (define-syntax let-branch
-   (syntax-rules ()
-     [(_ ([(p m l r) d] ...) exp ...)
-      (let ([p ($branch-prefix d)] ...
-            [m ($branch-mask d)] ...
-            [l ($branch-left d)] ...
-            [r ($branch-right d)] ...)
-        exp ...)]))
+ ;; merge*
+ ; like merge, but the result is (void)
+
+ (define (fxmap-merge* f id g1 g2 d1 d2)
+   (define (merge* f id g1 g2 d1 d2)
+     (define-syntax go
+       (syntax-rules ()
+         [(_ d1 d2) (merge* f id g1 g2 d1 d2)]))
+
+     (cond
+      [(eq? d1 d2) (id d1)]
+
+      [($branch? d1)
+       (cond
+        [($branch? d2)
+         (let-branch ([(p1 m1 l1 r1) d1]
+                      [(p2 m2 l2 r2) d2])
+          (cond
+           [(fx> m1 m2) (cond
+                         [(nomatch? p2 p1 m1) (g1 d1) (g2 d2)]
+                         [(fx<= p2 p1)        (go l1 d2) (g1 r1)]
+                         [else                (g1 l1) (go r1 d2)])]
+           [(fx> m2 m1) (cond
+                         [(nomatch? p1 p2 m2) (g1 d1) (g2 d2)]
+                         [(fx<= p1 p2)        (go d1 l2) (g2 r2)]
+                         [else                (g2 l2) (go d1 r2)])]
+           [(fx= p1 p2) (go l1 l2) (go r1 r2)]
+           [else        (g1 d1) (g2 d2)]))]
+
+        [($leaf? d2)
+         (let ([k2 ($leaf-key d2)])
+           (let merge*0 ([d1 d1])
+             (cond
+              [(eq? d1 d2)
+               (id d1)]
+
+              [($branch? d1)
+               (let-branch ([(p1 m1 l1 r1) d1])
+                (cond [(nomatch? k2 p1 m1) (g1 d1) (g2 d2)]
+                      [(fx<= k2 p1)        (merge*0 l1) (g1 r1)]
+                      [else                (g1 l1) (merge*0 r1)]))]
+
+              [($leaf? d1)
+               (let ([k1 ($leaf-key d1)])
+                 (cond [(fx= k1 k2) (f d1 d2)]
+                       [else        (g1 d1) (g2 d2)]))]
+
+              [else ; (eq? empty-fxmap d1)
+               (g2 d2) (void)])))]
+
+        [else ; (eq? empty-fxmap d2)
+         (g1 d1)])]
+
+      [($leaf? d1)
+       (let ([k1 ($leaf-key d1)])
+         (let merge*0 ([d2 d2])
+           (cond
+            [(eq? d1 d2)
+             (id d1)]
+
+            [($branch? d2)
+             (let-branch ([(p2 m2 l2 r2) d2])
+              (cond [(nomatch? k1 p2 m2) (g1 d1) (g2 d2)]
+                    [(fx<= k1 p2)        (merge*0 l2) (g2 r2)]
+                    [else                (g2 l2) (merge*0 r2)]))]
+
+            [($leaf? d2)
+             (let ([k2 ($leaf-key d2)])
+               (cond [(fx= k1 k2) (f d1 d2)]
+                     [else        (g1 d1) (g2 d2)]))]
+
+            [else ; (eq? empty-fxmap d2)
+             (g1 d1)])))]
+
+      [else ; (eq? empty-fxmap d1)
+       (g2 d2)]))
+   (merge* f id g1 g2 d1 d2)
+   (void))
+
+ ;; for-each
 
  (define (fxmap-for-each g1 d1)
    (cond
@@ -402,12 +483,11 @@
    (void))
 
  (define (fxmap-for-each/diff f g1 g2 d1 d2)
-   (fxmap-merge (lambda (prefix mask left right) empty-fxmap)
-                (lambda (x y) (f ($leaf-key x) ($leaf-val x) ($leaf-val y)) empty-fxmap)
-                (lambda (x) empty-fxmap)
-                (lambda (x) (fxmap-for-each g1 x) empty-fxmap)
-                (lambda (x) (fxmap-for-each g2 x) empty-fxmap)
-                d1
-                d2)
+   (fxmap-merge* (lambda (x y) (f ($leaf-key x) ($leaf-val x) ($leaf-val y)))
+                 (lambda (x) (void))
+                 (lambda (x) (fxmap-for-each g1 x))
+                 (lambda (x) (fxmap-for-each g2 x))
+                 d1
+                 d2)
    (void))
 )
