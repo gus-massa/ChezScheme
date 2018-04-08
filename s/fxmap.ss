@@ -33,6 +33,8 @@
   ;; internals
   ; $branch? make-$branch $branch-prefix $branch-mask $branch-left $branch-right
   ; $leaf? make-$leaf $leaf-key $leaf-val
+
+  ;; We treat $empty as a singleton, so don't use these functions.
   ; $empty? make-$empty
   )
 
@@ -52,18 +54,20 @@
    (nongenerative #{$empty pfwk1nal7cs5dornqtzvda91m-0})
    (sealed #t))
 
- ;; constants
+ ;; constants & empty
 
  (define empty-fxmap (make-$empty))
+
+ (define (fxmap-empty? x) (eq? empty-fxmap x))
 
  ;; predicate
 
  (define (fxmap? x)
    (or ($branch? x)
        ($leaf? x)
-       ($empty? x)))
+       (eq? empty-fxmap x)))
 
- ;; count, changes & empty
+ ;; count & changes
 
  (define (fxmap-count d)
    (cond
@@ -79,8 +83,6 @@
      [($leaf? d)
       ($leaf-changes d)]
      [else 0]))
-
- (define fxmap-empty? $empty?)
 
  ;; ref
 
@@ -251,13 +253,13 @@
                  (fx+ (fxmap-changes l) (fxmap-changes r))))
 
  (define (br* p m l r)
-   (cond [($empty? r) l]
-         [($empty? l) r]
+   (cond [(eq? empty-fxmap r) l]
+         [(eq? empty-fxmap l) r]
          [else (br p m l r)]))
 
  (define (br*/base p m l r base)
-   (cond [($empty? r) l]
-         [($empty? l) r]
+   (cond [(eq? empty-fxmap r) l]
+         [(eq? empty-fxmap l) r]
          [(and ($branch? base)
                (eq? l ($branch-left base))
                (eq? r ($branch-right base)))
@@ -272,8 +274,8 @@
 
  (define (join* p1 d1 p2 d2)
    (cond
-     [($empty? d1) d2]
-     [($empty? d2) d1]
+     [(eq? empty-fxmap d1) d2]
+     [(eq? empty-fxmap d2) d1]
      [else (join p1 d1 p2 d2)]))
 
  (define (branching-bit p m)
@@ -349,10 +351,10 @@
                (cond [(fx= k1 k2) (f d1 d2)]
                      [else        (join* k1 (g1 d1) k2 (g2 d2))]))]
 
-            [else ; ($empty? d1)
+            [else ; (eq? empty-fxmap d1)
              (g2 d2)])))]
 
-      [else ;; ($empty? d2)
+      [else ; (eq? empty-fxmap d2)
        (g1 d1)])]
 
     [($leaf? d1)
@@ -373,10 +375,10 @@
              (cond [(fx= k1 k2) (f d1 d2)]
                    [else        (join* k1 (g1 d1) k2 (g2 d2))]))]
 
-          [else ; ($empty? d2)
+          [else ; (eq? empty-fxmap d2)
            (g1 d1)])))]
 
-    [else ; ($empty? d1)
+    [else ; (eq? empty-fxmap d1)
      (g2 d2)]))
 
  (define-syntax let-branch
@@ -395,16 +397,16 @@
       (fxmap-for-each g1 ($branch-right d1))]
      [($leaf? d1)
       (g1 ($leaf-key d1) ($leaf-val d1))]
-     [else ; ($empty? d1)
+     [else ; (eq? empty-fxmap d1)
       (void)])
    (void))
 
  (define (fxmap-for-each/diff f g1 g2 d1 d2)
-   (fxmap-merge (lambda (prefix mask left right) (make-$empty))
-                (lambda (x y) (f ($leaf-key x) ($leaf-val x) ($leaf-val y)) (make-$empty))
-                (lambda (x) (make-$empty))
-                (lambda (x) (fxmap-for-each g1 x) (make-$empty))
-                (lambda (x) (fxmap-for-each g2 x) (make-$empty))
+   (fxmap-merge (lambda (prefix mask left right) empty-fxmap)
+                (lambda (x y) (f ($leaf-key x) ($leaf-val x) ($leaf-val y)) empty-fxmap)
+                (lambda (x) empty-fxmap)
+                (lambda (x) (fxmap-for-each g1 x) empty-fxmap)
+                (lambda (x) (fxmap-for-each g2 x) empty-fxmap)
                 d1
                 d2)
    (void))
