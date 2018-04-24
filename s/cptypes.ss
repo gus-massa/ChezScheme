@@ -71,11 +71,19 @@ Notes:
   (define prelex-counter
     (let ()
       (define count 0)
+      (define known (make-eq-hashtable))
       (lambda (x)
+        (when (prelex-operand x)
+          (let ([k (eq-hashtable-ref known (prelex-operand x) #f)])
+            (if k
+              (unless (eq? x k)
+                ($impoops 'cptypes "duplicated prelex counter with ~s and ~s" x k))
+              ($impoops 'cptypes "unexpected prelex counter with ~s" x))))
         (or (prelex-operand x)
             (let ([c count])
               (set! count (fx+ count 1))
               (prelex-operand-set! x c)
+              (eq-hashtable-set! known c x)
               c)))))
 
   (with-output-language (Lsrc Expr)
