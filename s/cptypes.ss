@@ -77,8 +77,15 @@ Notes:
           (let ([k (eq-hashtable-ref known (prelex-operand x) #f)])
             (if k
               (unless (eq? x k)
-                ($impoops 'cptypes "duplicated prelex counter with ~s and ~s" x k))
-              ($impoops 'cptypes "unexpected prelex counter with ~s" x))))
+                (newline)
+                (printf "matting !!! [cptypes] duplicated prelex counter with ~s and ~s [~s] ~s" x k (prelex-operand x) count)
+                (newline) 
+                ($impoops 'cptypes "duplicated prelex counter with ~s and ~s [~s] ~s" x k (prelex-operand x) count))
+              (begin
+                (newline)
+                (printf "matting !!! [cptypes] unexpected prelex counter with ~s [~s] ~s" x (prelex-operand x) count)
+                (newline)
+                ($impoops 'cptypes "unexpected prelex counter with ~s [~s] ~s" x (prelex-operand x) count)))))
         (or (prelex-operand x)
             (let ([c count])
               (set! count (fx+ count 1))
