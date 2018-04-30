@@ -933,3 +933,8 @@
     mats/Mf-t*, foreign.ms, foreign4.c
 - Don't install equates.h
     Mf-install.in, wininstall/*nt.wxs
+- Add single-valued flag to primitives to reduce call-with-values
+  In particular this is useful to reduce begin0 expressions that have
+  a single valued result, to avoid the creation of an intermediate 
+  lambda or list to save the value.
+    cp0.ss, cmacros.ss, priminfo.ss, primvars.ss, cp0.ms
