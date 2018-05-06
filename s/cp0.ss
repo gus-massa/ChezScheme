@@ -2574,6 +2574,16 @@
                (residualize-seq '() (list x) ctxt)
                `(quote ,(target-bignum? dx)))])
 
+      (define-inline 2 $immediate?
+        [(x) (visit-and-maybe-extract* (lambda (x) #t) ([dx x])
+               (residualize-seq '() (list x) ctxt)
+               (display "*")
+               `(quote ,(cond
+                          [(and (integer? x) (exact? x))
+                           (target-fixnum? dx)]
+                          [else
+                           ($immediate? x)])))])
+
       (let ()
         (define do-inline-carry-op
           (lambda (x y z base-op ctxt)

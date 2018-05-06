@@ -2001,7 +2001,7 @@
   ($hashtable-veclen [flags discard])
   ($ht-minlen [flags discard])
   ($ht-veclen [flags discard])
-  ($immediate? [flags])
+  ($immediate? [flags cp02])
   ($impoops [flags abort-op])
   ($import-library [flags])
   ($inexactnum? [flags])
