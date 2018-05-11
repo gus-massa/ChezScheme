@@ -2135,7 +2135,9 @@
                    [(and (app-used ctxt1)
                          (let ([e (result-exp *p-val)])
                            (if (single-valued? e)
-                               (list e)
+                               (begin
+                                 (display "!")
+                                 (list e))
                                (nanopass-case (Lsrc Expr) e
                                  [(call ,preinfo ,pr ,e* ...)
                                   (guard (eq? (primref-name pr) 'values))
