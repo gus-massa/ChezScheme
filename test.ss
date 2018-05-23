@@ -20,6 +20,46 @@
 
 (display
   (expand/optimize
-    '(lambda (x) (+ 1 2))))
+    '((lambda (x . rest)
+        (list (vector? rest) (null? rest) rest))
+        )))
 (newline)
 
+(display
+  (expand/optimize
+    '((lambda (x . rest)
+        (list (vector? rest) (null? rest) rest))
+        0)))
+(newline)
+
+(display
+  (expand/optimize
+    '((lambda (x . rest)
+        (list (vector? rest) (null? rest) rest))
+        0 1)))
+(newline)
+
+(display
+  (expand/optimize
+    '((lambda (x . rest)
+        (list (vector? rest) (null? rest) rest))
+        0 1 2)))
+(newline)
+
+(display
+  (expand/optimize
+    '((lambda (x . rest)
+        (list (vector? rest) (null? rest) rest))
+        0)))
+(newline)
+
+(display
+  (expand/optimize
+    '(lambda (z)
+       (when (vector? z)
+         ((if (vector? z)
+              (lambda (x . rest)
+                (list (vector? rest) (null? rest) rest))
+              list)
+          0)))))
+(newline)
