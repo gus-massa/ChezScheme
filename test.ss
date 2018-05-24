@@ -29,7 +29,7 @@
   (expand/optimize
     '((lambda (x . rest)
         (list (vector? rest) (null? rest) rest))
-        0)))
+        (random 5))))
 (newline)
 
 (display
@@ -61,5 +61,5 @@
               (lambda (x . rest)
                 (list (vector? rest) (null? rest) rest))
               list)
-          0)))))
+          (random 5))))))
 (newline)
