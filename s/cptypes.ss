@@ -939,7 +939,7 @@ Notes:
                (fold-left pred-env-add t x*
                  (let f ([i nfixed] [r* r*])
                    (if (fx= i 0)
-                       (list (if (null? r*) 'null 'pair))
+                       (list (if (null? r*) null-rec 'pair))
                        (cons (car r*) (f (fx- i 1) (cdr r*))))))))
            (lambda () (values ir 'bottom types #f #f))))]
       [(call ,preinfo ,[e0 'value types -> e0 ret0 types0 t-types0 f-types0]
