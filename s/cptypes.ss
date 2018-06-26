@@ -193,7 +193,8 @@ Notes:
                                    (set! ret (pred-env-add/key ret key (pred-intersect x z)))))
                                (lambda (key x)
                                  (set! ret (pred-env-add/key ret key x)))
-                               (lambda (key x) (error 'pred-env-intersect/base "") (void))
+                               (lambda (key x)
+                                 ($impoops 'pred-env-intersect/base "unexpected value ~s in base environment ~s" x base))
                                from
                                base)
            ret)]))
@@ -231,7 +232,8 @@ Notes:
                                  ;x-> from
                                  ;z-> types
                                  (set! ret (pred-env-add/key ret key (pred-union x z)))))
-                             (lambda (key x) (error 'pred-env-union/base "") (void))
+                             (lambda (key x)
+                               ($impoops 'pred-env-union/from "unexpected value ~s in base environment ~s" x base))
                              from
                              base)
           ret))
@@ -286,7 +288,8 @@ Notes:
                                  (if (eq? x z)
                                      (set! ret (fxmap-reset/base ret key new-base))
                                      (set! ret (fxmap-advance/base ret key new-base)))))
-                             (lambda (key x) (error 'pred-env-rebase "") (void))
+                             (lambda (key x)
+                               ($impoops 'pred-env-rebase "unexpected value ~s in base environment ~s" x base))
                              new-base
                              base)
         ret))
