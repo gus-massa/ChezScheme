@@ -645,6 +645,11 @@
           (c-var-index-set! (car vars) i)
           (loop (cdr vars) regs (fx+ i 1))])))))
 
+(define (cptypes x)
+  (if (enable-type-recovery)
+      ($cptypes x))
+      x)
+
 (define-pass interpret-Lexpand : Lexpand (ir situation for-import? ofn eoo) -> * (val)
   (definitions
     (define (ibeval x1)
@@ -655,11 +660,14 @@
                                      (lambda (x)
                                        (set! cpletrec-ran? #t)
                                        (let* ([x ($pass-time 'cp0 (lambda () ($cp0 x #f)))]
-                                              [x ($pass-time 'cptypes (lambda () ($cptypes x)))])
+                                              [x ($pass-time 'cptypes (lambda () (cptypes x)))])
                                          ($pass-time 'cpletrec
                                            (lambda () ($cpletrec x)))))
                                      x2)])
-                             (if cpletrec-ran? x ($pass-time 'cpletrec (lambda () ($cpletrec x))))))]
+                             (if cpletrec-ran?
+                                 x
+                                 (let ([x ($pass-time 'cptypes (lambda () (cptypes x)))])
+                                   ($pass-time 'cpletrec (lambda () ($cpletrec x)))))))]
                     [x2b ($pass-time 'cpcheck (lambda () ($cpcheck x2a)))]
                     [x2b ($pass-time 'cpcommonize (lambda () ($cpcommonize x2b)))])
                (when eoo (pretty-print ($uncprep x2b) eoo))
