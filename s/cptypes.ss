@@ -846,6 +846,13 @@ Notes:
                                 (pred-env-add/ref types (car e*) pred))
                            #f)]))]
              ; TODO: special case for call-with-values.
+             [(eq? (primref-name pr) 'list)
+              (cond 
+                [(null? e*)
+                 ;should have be reduced by cp0
+                 (values null-rec null-rec t #f #f)]
+                [else
+                 (values `(call ,preinfo ,pr ,e* ...) 'pair t #f #f)])]
              [(and (fx= (length e*) 1)
                    (eq? (primref-name pr) 'exact?))
               (cond

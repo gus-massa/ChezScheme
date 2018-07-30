@@ -76,6 +76,12 @@
     '(pair? (cons 1 2)) 
     #t)
   (cptypes-equivalent-expansion?
+    '(pair? (list 1 2)) 
+    #t)
+  (cptypes-equivalent-expansion?
+    '(pair? (list)) 
+    #f)
+  (cptypes-equivalent-expansion?
     '(lambda (x) (vector-set! x 0 0) (vector? x))
     '(lambda (x) (vector-set! x 0 0) #t))
   (cptypes-equivalent-expansion?
