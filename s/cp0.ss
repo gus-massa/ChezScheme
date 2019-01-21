@@ -2667,6 +2667,17 @@
                           (build-primcall 3 'fxmod (list refx refy)))))))
                 ctxt empty-env sc wd name moi))])
 
+      (let ()
+        (define (exact-nonnegative-integer? x)
+          (and (integer? x) (exact? x) (>= x 0))) 
+        (define-inline 2 exact-integer-sqrt
+          [(x)
+           (visit-and-maybe-extract* exact-nonnegative-integer? ([dx x])
+             (residualize-seq '() (list x) ctxt)
+             (let-values ([(s r) (exact-integer-sqrt dx)])
+               (build-primcall 3 'values
+                 (list `(quote ,s) `(quote ,r)))))]))
+
       (define-inline 2 $top-level-value
         [(x)
          (nanopass-case (Lsrc Expr) (result-exp (value-visit-operand! x))
