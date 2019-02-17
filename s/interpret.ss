@@ -664,12 +664,9 @@
                                          ($pass-time 'cpletrec
                                            (lambda () ($cpletrec x)))))
                                      x2)])
-                             (if cpletrec-ran?
-                                 x
-                                 (let ([x ($pass-time 'cptypes (lambda () (cptypes x)))])
-                                   ($pass-time 'cpletrec (lambda () ($cpletrec x)))))))]
-                    [x2b ($pass-time 'cpcheck (lambda () ($cpcheck x2a)))]
-                    [x2b ($pass-time 'cpcommonize (lambda () ($cpcommonize x2b)))])
+                             (if cpletrec-ran? x ($cpletrec x))))]
+                    [x2b ($cpcheck x2a)]
+                    [x2b ($cpcommonize x2b)])
                (when eoo (pretty-print ($uncprep x2b) eoo))
                (let ([x ($pass-time 'ip1 (lambda () (ip1 x2b)))])
                  ($pass-time 'ip2 (lambda () (ip2 x))))))
