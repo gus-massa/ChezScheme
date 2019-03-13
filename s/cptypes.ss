@@ -901,17 +901,6 @@ Notes:
                          ret types #f #f))]
              [else
               (values `(call ,preinfo ,pr ,e* ...) ret t #f #f)])))]
-      [(case-lambda ,preinfo ,cl* ...)
-       (let ([cl* (map (lambda (cl)
-                        (nanopass-case (Lsrc CaseLambdaClause) cl
-                          [(clause (,x* ...) ,interface ,body)
-                           (let-values ([(body ret types t-types f-types)
-                                         (Expr body 'value types)])
-                             (for-each (lambda (x) (prelex-operand-set! x #f)) x*)
-                             (with-output-language (Lsrc CaseLambdaClause)
-                               `(clause (,x* ...) ,interface ,body)))]))
-                       cl*)])
-         (values `(case-lambda ,preinfo ,cl* ...) 'procedure types #f #f))]
       [(call ,preinfo (case-lambda ,preinfo2 (clause (,x** ...) ,interface* ,body*) ...)
              ,[e* 'value types -> e* r* t* t-t* f-t*] ...)
        ;; pulled from cpnanopass
@@ -968,6 +957,17 @@ Notes:
                    types0 types)
                  e0 'procedure)
                #f #f)]
+      [(case-lambda ,preinfo ,cl* ...)
+       (let ([cl* (map (lambda (cl)
+                        (nanopass-case (Lsrc CaseLambdaClause) cl
+                          [(clause (,x* ...) ,interface ,body)
+                           (let-values ([(body ret types t-types f-types)
+                                         (Expr body 'value types)])
+                             (for-each (lambda (x) (prelex-operand-set! x #f)) x*)
+                             (with-output-language (Lsrc CaseLambdaClause)
+                               `(clause (,x* ...) ,interface ,body)))]))
+                       cl*)])
+         (values `(case-lambda ,preinfo ,cl* ...) 'procedure types #f #f))]
       [(letrec ((,x* ,[e* 'value types -> e* r* t* t-t* t-f*]) ...) ,body)
        (let* ([t (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)]
               [t (fold-left pred-env-add t x* r*)])
