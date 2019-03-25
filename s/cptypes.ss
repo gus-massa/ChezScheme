@@ -642,10 +642,37 @@ Notes:
 
   (define (cptypes-call preinfo e e* ctxt types)
     (nanopass-case (Lsrc Expr) e
+        [,pr
+         (guard (and (fx= (length e*) 2)
+                     (eq? (primref-name pr) 'call-with-values)))
+         (cptypes-call/call-with-values preinfo e e* ctxt types)]
         [,pr (cptypes-call/pr preinfo e e* ctxt types)]
         [(case-lambda ,preinfo2 ,cl2* ...)
          (cptypes-call/case-lambda preinfo e e* ctxt types)]
         [else (cptypes-call/expr preinfo e e* ctxt types)]))
+
+  (define (cptypes-call/call-with-values preinfo e_0 e_* ctxt types)
+    (define pr e_0)
+    (define e_1 (car e*))
+    (define e_2 (cadr e*))
+    (define-values (e1 ret1 types1 t-types1 f-types1)
+                   (cptypes-call (make-preinfo) e_1 '() 'value types))
+    (define-values (e2 ret2 types2 t-types2 f-types2)
+                   (cptypes-call (make-preinfo) e_2 '??? ctxt types))
+    (define new-types (pred-env-intersect/base types2 types1 types))
+    (values `(call ,preinfo ,pr ,e1 ,e2)
+            ret2
+            new-types
+            (and (eq? ctxt 'test)
+                 t-types2
+                 (not (eq? types2 t-types2))
+                 (if (eq? new-types types2 new-types)
+                     t-types2
+                     (pred-env-intersect/super-base t-types2 types2 
+                                                    types1 types
+                                                    types
+                                                    new-types)))
+            f-types2))
 
   (define (cptypes-call/pr preinfo e_0 e_* ctxt types)
     (define pr e_0)
