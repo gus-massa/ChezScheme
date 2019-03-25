@@ -19,7 +19,7 @@ Notes:
  - (cptypes ir ctxt types) -> (values ir ret types t-types f-types)
    + arguments
      ir: expression to be optimized
-     ctxt: 'effect 'test 'value
+     ctxt: 'effect 'test 'value 'tail
      types: an immutable dictionary (currently an intmap).
             The dictionary connects the counter of a prelex with the types
             discovered previously.
@@ -54,6 +54,7 @@ Notes:
                 (these may collide with other records)
               * TODO?: add something to indicate that x is a procedure to
                        create/setter/getter/predicate of a record of that type
+              * all the return types imply single-valued
 
  - Primitives are marked as procedures, without distinction.
  - Most of the time I'm using eq? and eqv? as if they were equivalent.
@@ -626,6 +627,21 @@ Notes:
 
   (define (primref->unsafe-primref pr)
     (lookup-primref 3 (primref-name pr)))
+
+  (define (make-nontail ctxt e)
+    (if (or (not (eq? ctxt 'tail)) (simple? e))
+        e
+        (nanopass-case (Lsrc Expr) e
+          [(call ,preinfo ,pr ,e* ...)
+           (guard (eq? (primref-name pr) '$value))
+           e]
+          [(seq ,e1 (call ,preinfo ,pr ,e* ...))
+           (guard (eq? (primref-name pr) '$value))
+           e]
+          [else
+           (with-output-language (Lsrc Expr)
+             `(call ,(make-preinfo) ,(lookup-primref 3 '$value) ,e))])))
+
 )
     (Expr : Expr (ir ctxt types) -> Expr (ret types t-types f-types)
       [(quote ,d)
@@ -658,7 +674,7 @@ Notes:
       [(seq ,[e1 'effect types -> e1 ret1 types t-types f-types] ,e2)
        (cond
          [(predicate-implies? ret1 'bottom)
-          (values e1 ret1 types #f #f)]
+          (values (make-nontail ctxt e1) ret1 types #f #f)]
          [else
           (let-values ([(e2 ret types t-types f-types)
                         (Expr e2 ctxt types)])
@@ -666,7 +682,7 @@ Notes:
       [(if ,[e1 'test types -> e1 ret1 types1 t-types1 f-types1] ,e2 ,e3)
        (cond
          [(predicate-implies? ret1 'bottom) ;check bottom first
-          (values e1 ret1 types #f #f)]
+          (values (make-nontail ctxt e1) ret1 types #f #f)]
          [(predicate-implies-not? ret1 false-rec)
           (let-values ([(e2 ret types t-types f-types)
                         (Expr e2 ctxt types1)])
@@ -901,7 +917,7 @@ Notes:
                         (nanopass-case (Lsrc CaseLambdaClause) cl
                           [(clause (,x* ...) ,interface ,body)
                            (let-values ([(body ret types t-types f-types)
-                                         (Expr body 'value types)])
+                                         (Expr body 'tail types)])
                              (for-each (lambda (x) (prelex-operand-set! x #f)) x*)
                              (with-output-language (Lsrc CaseLambdaClause)
                                `(clause (,x* ...) ,interface ,body)))]))
@@ -1050,7 +1066,7 @@ Notes:
       [(profile ,src) (values ir #f types #f #f)]
       [else ($oops who "unrecognized record ~s" ir)])
     (let-values ([(ir ret types t-types f-types)
-                  (Expr ir 'value pred-env-empty)])
+                  (Expr ir 'tail pred-env-empty)])
       ir))
 
   (set! $cptypes cptypes)
