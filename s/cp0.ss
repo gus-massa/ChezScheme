@@ -2353,7 +2353,11 @@
 
       (define-inline 2 $value
         [(x) (let ([v (value-visit-operand! x)])
-               (and (single-valued? v)
+               (and (context-case
+                      [(tail)
+                       (single-valued-without-inspecting-continuation? v)]
+                      [else
+                       (single-valued? v)])
                     (begin
                       (residualize-seq (list x) '() ctxt)
                       v)))])
