@@ -224,7 +224,8 @@
                        (display-condition c *mat-output*)
                        (reset))))
                (lambda ()
-                 (pretty-print clause *mat-output*)
+                 (parameterize ([print-graph #t])
+                   (pretty-print clause *mat-output*))
                  (flush-output-port *mat-output*)))
               (if (and (list? clause)
                        (= (length clause) 2)
@@ -266,6 +267,12 @@
  ; same modulo renaming of gensyms
  ; procedure in either input is used as predicate for other
   (lambda (x y)
+    (parameterize ([print-graph #t])
+      (printf "[[[\n")
+      (pretty-print x)
+      (printf "===\n")
+      (pretty-print x)
+      (printf "]]]\n"))
     (let ([alist '()] [oops? #f])
       (or (let e? ([x x] [y y])
             (or (cond
