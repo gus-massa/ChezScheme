@@ -677,6 +677,19 @@ Notes:
   (define (primref->unsafe-primref pr)
     (lookup-primref 3 (primref-name pr)))
 
+  (define (map-values l f v*)
+    ; `l` is the default lenght, in case `v*` is null. 
+    (if (null? v*)
+      (apply values (make-list l '()))
+      (let ()
+        (define transposed (map (lambda (x)
+                                  (call-with-values
+                                    (lambda () (f x))
+                                    list))
+                                v*))
+        (define good (apply map list transposed))
+        (apply values good))))
+
   (define (Expr/fix-tf-types ir ctxt types)
     (let-values ([(ir ret types t-types f-types)
                   (Expr ir ctxt types)])
@@ -688,6 +701,81 @@ Notes:
               (if (predicate-implies? ret 'true)
                   pred-env-bottom
                   (or f-types types)))))
+
+  (define (Expr/call ir ctxt types)
+    (nanopass-case (Lsrc Expr) ir
+      [,pr (values pr (primref->result-predicate pr) types #f #f)]
+      [(case-lambda ,preinfo ,cl* ...)
+       (let loop ([cl* cl*]
+                  [rev-rcl* '()]
+                  [rret 'bottom]
+                  [rtypes types]
+                  [rt-types (and (eq? ctxt 'test) types)]
+                  [rf-types (and (eq? ctxt 'test) types)])
+         (cond
+           [(null? cl*)
+            (let ([retcl* (reverse rev-rcl*)]) 
+              (values (with-output-language (Lsrc Expr)
+                        `(case-lambda ,preinfo ,retcl* ...))
+                      rret rtypes rt-types rf-types))] 
+           [else
+            (nanopass-case (Lsrc CaseLambdaClause) (car cl*)
+              [(clause (,x* ...) ,interface ,body)
+               (let-values ([(body ret2 types2 t-types2 f-types2)
+                             (Expr body ctxt types)])
+                 (let* ([cl2 (with-output-language (Lsrc CaseLambdaClause)
+                                 `(clause (,x* ...) ,interface ,body))]
+                        [t-types2 (or t-types2 types2)]
+                        [f-types2 (or f-types2 types2)])
+                   (for-each (lambda (x) (prelex-operand-set! x #f)) x*)
+                   (cond
+                     [(predicate-implies? ret2 'bottom)
+                      (loop (cdr cl*) (cons cl2 rev-rcl*)
+                            rret rtypes rt-types rf-types)]
+                     [(predicate-implies? rret 'bottom)
+                      (loop (cdr cl*) (cons cl2 rev-rcl*)
+                            ret2 types2 t-types2 f-types2)]
+                     [else
+                      (let ([ntypes (pred-env-union/super-base rtypes types
+                                                               types2 types
+                                                               types
+                                                               types)])
+                        (loop (cdr cl*)
+                              (cons cl2 rev-rcl*)
+                              (pred-union rret ret2)
+                              ntypes 
+                              (cond
+                                [(not (eq? ctxt 'test))
+                                 #f] ; don't calculate nt-types outside a test context
+                                [(and (eq? rtypes rt-types)
+                                      (eq? types2 t-types2))
+                                 ntypes] ; don't calculate nt-types when it will be equal to ntypes
+                                [else
+                                 (pred-env-union/super-base rt-types rtypes
+                                                            t-types2 types2
+                                                            types
+                                                            ntypes)])
+                              (cond
+                                [(not (eq? ctxt 'test))
+                                 #f] ; don't calculate nt-types outside a test context
+                                [(and (eq? rtypes rf-types)
+                                      (eq? types2 f-types2))
+                                 ntypes] ; don't calculate nt-types when it will be equal to ntypes
+                                [else
+                                 (pred-env-union/super-base rf-types rtypes
+                                                            f-types2 types2
+                                                            types
+                                                            ntypes)])))])))])]))]
+      [else
+       (let-values ([(ir ret types t-types f-types)
+                     (Expr ir ctxt types)])
+         (values ir
+                (if (predicate-implies-not? ret 'procedure)
+                    'bottom
+                    #f)
+                (pred-env-add/ref types ir 'procedure)
+                #f #f))]))
+
 )
     (Expr : Expr (ir ctxt types) -> Expr (ret types t-types f-types)
       [(quote ,d)
@@ -785,6 +873,62 @@ Notes:
                                                          new-types)])))])))])]
       [(set! ,maybe-src ,x ,[e 'value types -> e ret types t-types f-types])
        (values `(set! ,maybe-src ,x ,e) void-rec types #f #f)]
+      [(call ,preinfo ,pr ,e* ...)
+       (guard (memq (primref-name pr) '(call-with-values)))
+       (cond
+         [(and (fx= (length e*) 2)
+               (eq? (primref-name pr) 'call-with-values))
+          (let ([e1 (car e*)]
+                [e2 (cadr e*)])
+            (let-values ([(e1 ret1 types1 t-types1 f-types1)
+                          (Expr/call e1 'value types)])
+              (cond
+                [(nanopass-case (Lsrc Expr) e2
+                   [,pr #t]
+                   [(case-lambda ,preinfo ,cl* ...) #t]
+                   [else #f])
+                 (let-values ([(e2 ret2 types2 t-types2 f-types2)
+                               (Expr/call e2 ctxt types1)])
+                   (values `(call ,preinfo ,pr ,e1 ,e2)
+                           (if (predicate-implies? ret1 'bottom)
+                               'bottom
+                               ret2)
+                           types2 t-types2 f-types2))]
+                [else
+                 (let-values ([(e2 ret2 types2 t-types2 f-types2)
+                               (Expr e2 'value types)])
+                   (values `(call ,preinfo ,pr ,e1 ,e2)
+                           (if (or (predicate-implies? ret1 'bottom)
+                                   (predicate-implies-not? ret2 'procedure))
+                               'bottom
+                               #f)
+                           (pred-env-add/ref (pred-env-intersect/base types1 types2 types)
+                                             e2 'procedure)
+                           #f #f))])))]
+         [else
+          (let-values ([(e* r* t* t-t* f-t*)
+                        (map-values 5 (lambda (e) (Expr e 'value types)) e*)])
+            (let* ([t (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)]
+                     [ret (primref->result-predicate pr)])
+                (let-values ([(ret t)
+                              (let loop ([e* e*] [r* r*] [n 0] [ret ret] [t t])
+                                (if (null? e*)
+                                    (values ret t)
+                                    (let ([pred (primref->argument-predicate pr n #t)])
+                                      (loop (cdr e*)
+                                            (cdr r*)
+                                            (fx+ n 1)
+                                            (if (predicate-implies-not? (car r*) pred)
+                                                'bottom
+                                                ret)
+                                            (pred-env-add/ref t (car e*) pred)))))])
+                  (cond
+                    [(predicate-implies? ret 'bottom)
+                     (values `(call ,preinfo ,pr ,e* ...) ret t #f #f)]
+                    [(not (arity-okay? (primref-arity pr) (length e*)))
+                     (values `(call ,preinfo ,pr ,e* ...) 'bottom t #f #f)]
+                    [else
+                     (values `(call ,preinfo ,pr ,e* ...) ret t #f #f)]))))])]
       [(call ,preinfo ,pr ,[e* 'value types -> e* r* t* t-t* f-t*] ...)
        (let* ([t (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)]
               [ret (primref->result-predicate pr)])
@@ -892,7 +1036,6 @@ Notes:
                            (and (eq? ctxt 'test)
                                 (pred-env-add/ref types (car e*) pred))
                            #f)]))]
-             ; TODO: special case for call-with-values.
              [(eq? (primref-name pr) 'list)
               (cond 
                 [(null? e*)
