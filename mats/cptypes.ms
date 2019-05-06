@@ -899,3 +899,97 @@
           (lambda (x y) (+ x y)))
          222)))
 )
+
+(mat cptypes-apply
+  (cptypes-equivalent-expansion?
+    '(lambda (l b)
+       (apply (lambda (x) (display (list (unbox b) x))) l)
+       (box? b))
+    '(lambda (l b)
+       (apply (lambda (x) (display (list (unbox b) x))) l)
+       #t))
+  (cptypes-equivalent-expansion?
+    '(lambda (l b)
+       (apply (lambda (x y) (display (list (unbox b) x))) 7 l)
+       (box? b))
+    '(lambda (l b)
+       (apply (lambda (x y) (display (list (unbox b) x))) 7 l)
+       #t))
+  (cptypes-equivalent-expansion?
+    '(lambda (l b)
+       (apply (lambda (x) (display (list b x))) (unbox b))
+       (box? b))
+    '(lambda (l b)
+       (apply (lambda (x) (display (list b x))) (unbox b))
+       #t))
+  (cptypes-equivalent-expansion?
+    '(lambda (l b)
+       (apply (lambda (x y) (display (list b x y))) 7 (unbox b))
+       (box? b))
+    '(lambda (l b)
+       (apply (lambda (x y) (display (list b x y))) 7 (unbox b))
+       #t))
+
+  (cptypes-equivalent-expansion?
+    ; with #3% the argument may be inlined and then executed in reverse order
+    '(lambda (l b)
+       (#2%apply (lambda (x y) (list (box? b) x y)) 7 (unbox b)))
+    '(lambda (l b)
+       (#2%apply (lambda (x y) (list #t x y)) 7 (unbox b))))
+
+  (cptypes-equivalent-expansion?
+    '(lambda (l b)
+       (apply
+        (case-lambda 
+          [(x) (list (unbox b) x)]
+          [(x y) (error 'e "")])
+        l)
+       (box? b)) 
+    '(lambda (l b)
+       (apply
+        (case-lambda 
+          [(x) (list (unbox b) x)]
+          [(x y) (error 'e "")])
+        l)
+       #t)) 
+
+  (cptypes-equivalent-expansion?
+    '(lambda (l)
+       (number?
+        (apply (lambda (x y) (+ x y)) l)))
+    '(lambda (l)
+       (apply (lambda (x y) (+ x y)) l)
+       #t))
+  (cptypes-equivalent-expansion?
+    '(lambda (l)
+       (number?
+        (apply
+         (case-lambda
+          [(x y) (+ x y)]
+          [()  (error 'e "")])
+         l)))
+    '(lambda (l)
+       (apply
+        (case-lambda
+         [(x y) (+ x y)]
+         [()  (error 'e "")])
+        l)
+       #t))
+
+  (cptypes-equivalent-expansion?
+    '(lambda (f l)
+       (apply f l)
+       (procedure? f))
+    '(lambda (f l)
+       (apply f l)
+       #t))
+  (cptypes-equivalent-expansion?
+    '(lambda (t f)
+       (when (box? f)
+         (apply f l)
+         111))
+    '(lambda (t f)
+       (when (box? f)
+         (apply f l)
+         222)))
+)

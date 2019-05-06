@@ -874,7 +874,7 @@ Notes:
       [(set! ,maybe-src ,x ,[e 'value types -> e ret types t-types f-types])
        (values `(set! ,maybe-src ,x ,e) void-rec types #f #f)]
       [(call ,preinfo ,pr ,e* ...)
-       (guard (memq (primref-name pr) '(call-with-values)))
+       (guard (memq (primref-name pr) '(call-with-values apply $apply)))
        (cond
          [(and (fx= (length e*) 2)
                (eq? (primref-name pr) 'call-with-values))
@@ -905,6 +905,32 @@ Notes:
                            (pred-env-add/ref (pred-env-intersect/base types1 types2 types)
                                              e2 'procedure)
                            #f #f))])))]
+         [(or (and (fx>= (length e*) 2) (eq? (primref-name pr) 'apply))
+              (and (fx= (length e*) 3) (eq? (primref-name pr) '$apply)))
+          (let ([e1 (car e*)]
+                [e* (cdr e*)])
+           (let-values ([(e* r* t* t-t* f-t*)
+                         (map-values 5 (lambda (e) (Expr e 'value types)) e*)])
+             (let* ([t (fold-left (lambda (f t) (pred-env-intersect/base f t types)) types t*)])
+               (cond
+                 [(nanopass-case (Lsrc Expr) e1
+                    [,pr #t]
+                    [(case-lambda ,preinfo ,cl* ...) #t]
+                    [else #f])
+                  (let-values ([(e1 ret1 types1 t-types1 f-types1)
+                                (Expr/call e1 ctxt t)])
+                    (values `(call ,preinfo ,pr ,e1 ,e* ...)
+                            ret1 types1 t-types1 f-types1))]
+                 [else
+                  (let-values ([(e1 ret1 types1 t-types1 f-types1)
+                                (Expr e1 'value types)])
+                    (values `(call ,preinfo ,pr ,e1 ,e* ...)
+                            (if (predicate-implies-not? ret1 'procedure)
+                                'bottom
+                                #f)
+                            (pred-env-add/ref (pred-env-intersect/base t types1 types)
+                                              e1  'procedure)
+                            #f #f))]))))]
          [else
           (let-values ([(e* r* t* t-t* f-t*)
                         (map-values 5 (lambda (e) (Expr e 'value types)) e*)])
