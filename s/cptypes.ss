@@ -912,26 +912,11 @@ Notes:
                 [e* (cdr e*)])
            (let-values ([(e* r* t* t-t* f-t*)
                          (map-values 5 (lambda (e) (Expr e 'value types)) e*)])
-             (let* ([t (fold-left (lambda (f t) (pred-env-intersect/base f t types)) types t*)])
-               (cond
-                 [(nanopass-case (Lsrc Expr) e1
-                    [,pr #t]
-                    [(case-lambda ,preinfo ,cl* ...) #t]
-                    [else #f])
-                  (let-values ([(e1 ret1 types1 t-types1 f-types1)
-                                (Expr/call e1 ctxt t t)])
-                    (values `(call ,preinfo ,pr ,e1 ,e* ...)
-                            ret1 types1 t-types1 f-types1))]
-                 [else
-                  (let-values ([(e1 ret1 types1 t-types1 f-types1)
-                                (Expr e1 'value types)])
-                    (values `(call ,preinfo ,pr ,e1 ,e* ...)
-                            (if (predicate-implies-not? ret1 'procedure)
-                                'bottom
-                                #f)
-                            (pred-env-add/ref (pred-env-intersect/base t types1 types)
-                                              e1  'procedure)
-                            #f #f))]))))]
+             (let ([t (fold-left (lambda (f t) (pred-env-intersect/base f t types)) types t*)])
+               (let-values ([(e1 ret1 types1 t-types1 f-types1)
+                             (Expr/call e1 ctxt t types)])
+                 (values `(call ,preinfo ,pr ,e1 ,e* ...)
+                         ret1 types1 t-types1 f-types1)))))]
          [else
           (let-values ([(e* r* t* t-t* f-t*)
                         (map-values 5 (lambda (e) (Expr e 'value types)) e*)])
