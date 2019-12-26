@@ -702,7 +702,7 @@ Notes:
                   pred-env-bottom
                   (or f-types types)))))
 
-  (define (Expr/call ir ctxt types)
+  (define (Expr/call ir ctxt types outtypes)
     (nanopass-case (Lsrc Expr) ir
       [,pr (values pr (primref->result-predicate pr) types #f #f)]
       [(case-lambda ,preinfo ,cl* ...)
@@ -767,13 +767,14 @@ Notes:
                                                             types
                                                             ntypes)])))])))])]))]
       [else
-       (let-values ([(ir ret types t-types f-types)
-                     (Expr ir ctxt types)])
+       (let-values ([(ir ret n-types t-types f-types)
+                     (Expr ir ctxt outtypes)])
          (values ir
                 (if (predicate-implies-not? ret 'procedure)
                     'bottom
                     #f)
-                (pred-env-add/ref types ir 'procedure)
+                (pred-env-add/ref (pred-env-intersect/base n-types types outtypes)
+                                  ir 'procedure)
                 #f #f))]))
 
 )
@@ -881,14 +882,14 @@ Notes:
           (let ([e1 (car e*)]
                 [e2 (cadr e*)])
             (let-values ([(e1 ret1 types1 t-types1 f-types1)
-                          (Expr/call e1 'value types)])
+                          (Expr/call e1 'value types types)])
               (cond
                 [(nanopass-case (Lsrc Expr) e2
                    [,pr #t]
                    [(case-lambda ,preinfo ,cl* ...) #t]
                    [else #f])
                  (let-values ([(e2 ret2 types2 t-types2 f-types2)
-                               (Expr/call e2 ctxt types1)])
+                               (Expr/call e2 ctxt types1 types1)])
                    (values `(call ,preinfo ,pr ,e1 ,e2)
                            (if (predicate-implies? ret1 'bottom)
                                'bottom
@@ -918,7 +919,7 @@ Notes:
                     [(case-lambda ,preinfo ,cl* ...) #t]
                     [else #f])
                   (let-values ([(e1 ret1 types1 t-types1 f-types1)
-                                (Expr/call e1 ctxt t)])
+                                (Expr/call e1 ctxt t t)])
                     (values `(call ,preinfo ,pr ,e1 ,e* ...)
                             ret1 types1 t-types1 f-types1))]
                  [else
