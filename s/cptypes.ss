@@ -768,7 +768,7 @@ Notes:
                                                             ntypes)])))])))])]))]
       [else
        (let-values ([(ir ret n-types t-types f-types)
-                     (Expr ir ctxt outtypes)])
+                     (Expr ir 'value outtypes)])
          (values ir
                 (if (predicate-implies-not? ret 'procedure)
                     'bottom
