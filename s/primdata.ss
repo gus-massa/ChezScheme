@@ -192,7 +192,7 @@
   (real-valued? [sig [(ptr) -> (boolean)]] [flags pure unrestricted mifoldable discard])
   (rational-valued? [sig [(ptr) -> (boolean)]] [flags pure unrestricted mifoldable discard])
   (integer-valued? [sig [(ptr) -> (boolean)]] [flags pure unrestricted mifoldable discard])
-  (exact? [sig [(number) -> (boolean)]] [flags pure mifoldable discard safeongoodargs ieee r5rs])
+  (exact? [sig [(number) -> (boolean)]] [flags pure mifoldable discard safeongoodargs cptypes2 ieee r5rs])
   (inexact? [sig [(number) -> (boolean)]] [flags pure mifoldable discard safeongoodargs ieee r5rs])
   (inexact [sig [(number) -> (inexact-number)]] [flags arith-op mifoldable discard safeongoodargs])
   (exact [sig [(number) -> (exact-number)]] [flags arith-op mifoldable discard]) ; no safeongoodargs because it fails with +inf.0

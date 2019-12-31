@@ -61,7 +61,7 @@ Notes:
 
 |#
 
-
+  
 (define $cptypes)
 (let ()
   (import (nanopass))
@@ -677,6 +677,112 @@ Notes:
   (define (primref->unsafe-primref pr)
     (lookup-primref 3 (primref-name pr)))
 
+
+  (module ()
+  (let ()
+  (define-syntax define-inline
+    (lambda (x)
+      (syntax-case x ()
+        ((_key lev prim clause ...)
+         (identifier? #'prim)
+         #'(_key lev (prim) clause ...))
+        ((_key lev (prim ...) clause ...)
+         (andmap identifier? #'(prim ...))
+         (with-implicit (_key level pr ctxt types ntypes preinfo r* ret)
+           (with-syntax
+             ((key (case (datum lev)
+                     ((2) #'cptypes2)
+                     ((3) #'cptypes3)
+                     (else ($oops #f "invalid inline level ~s" (datum lev)))))
+              (body
+                (let f ((clauses #'(clause ...)))
+                  (if (null? clauses)
+                      #'#f
+                      (with-syntax ((rest (f (cdr clauses))))
+                        (syntax-case (car clauses) ()
+                          (((x ...) e1 e2 ...)
+                           (with-syntax ((n (length #'(x ...))))
+                             #'(if (eq? count n)
+                                   (apply (lambda (x ...) e1 e2 ...) args)
+                                   rest)))
+                          ((r e1 e2 ...)
+                           (identifier? #'r)
+                           #'(apply (lambda r e1 e2 ...) args))
+                          ((r e1 e2 ...)
+                           (with-syntax ((n (let loop ((r #'r) (n 0))
+                                              (syntax-case r ()
+                                                ((v . r)
+                                                 (identifier? #'v)
+                                                 (loop #'r (+ n 1)))
+                                                (v
+                                                  (identifier? #'v)
+                                                  n)))))
+                             #'(if (fx>= count n)
+                                   (apply (lambda r e1 e2 ...) args)
+                                   rest)))))))))
+             (for-each
+               (lambda (sym-name)
+                 (let ([sym-key (datum key)])
+                   (if (getprop sym-name sym-key #f)
+                       (warningf #f "duplicate ~s handler for ~s" sym-key sym-name)
+                       (putprop sym-name sym-key #t))
+                   #;(unless (all-set?
+                               (case (datum lev)
+                                 [(2) (prim-mask cptypes2)]
+                                 [(3) (prim-mask cptypes3)])
+                               ($sgetprop sym-name '*flags* 0))
+                       (warningf #f "undeclared ~s handler for ~s~%" sym-key sym-name))))
+               (datum (prim ...)))
+             #'(let ((foo (lambda (prim-name)
+                            (lambda (level preinfo pr ret args r* ctxt types ntypes)
+                              (let ([count (length args)])
+                                body)))))
+                 ($sputprop 'prim 'key (foo 'prim)) ...)))))))
+
+  (with-output-language (Lsrc Expr)
+
+    (define-inline 2 exact?
+      [(n) (let ([r (car r*)])
+             (cond
+               [(predicate-implies? r 'exact-integer)
+                (values (make-seq ctxt n true-rec)
+                        true-rec ntypes #f #f)]
+               [(predicate-implies? r 'flonum)
+                (values (make-seq ctxt n false-rec)
+                        false-rec ntypes #f #f)]
+               [(and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
+                     (predicate-implies? r 'number))
+                (let ([pr (primref->unsafe-primref pr)])
+                  (values `(call ,preinfo ,pr ,n) ret ntypes #f #f))]
+               [else
+                (values `(call ,preinfo ,pr ,n) ret ntypes #f #f)]))])
+  )
+  (void)) (void))
+  
+  (define (fold-primref2 ir preinfo pr ret e* r* ctxt types ntypes)
+    (let* ([flags (primref-flags pr)]
+           [level (if (all-set? (prim-mask unsafe) flags) 3 2)]    
+           [prim-name (primref-name pr)]
+           [handler (or (and (all-set? (prim-mask unsafe) flags)
+                             (all-set? (prim-mask cptypes3) flags)
+                             ($sgetprop prim-name 'cptypes3 #f))
+                        (and (all-set? (prim-mask cptypes2) flags)
+                             ($sgetprop prim-name 'cptypes2 #f)))])
+      (if handler
+          (call-with-values
+            (lambda () (handler level preinfo pr ret e* r* ctxt types ntypes))
+            (case-lambda
+              [(ir2 ret2 types2 t-types2 f-types2)
+               (values ir2 ret2 types2 t-types2 f-types2)]
+              [else ($oops 'fold-primref2 "UNEXPECTED")]))
+          (values `(call ,preinfo ,pr ,e* ...) #f types #f #f))))
+
+
+
+
+
+
+
   (define (map-values l f v*)
     ; `l` is the default lenght, in case `v*` is null. 
     (if (null? v*)
@@ -1039,7 +1145,9 @@ Notes:
                  (values null-rec null-rec t #f #f)]
                 [else
                  (values `(call ,preinfo ,pr ,e* ...) 'pair t #f #f)])]
-             [(and (fx= (length e*) 1)
+             [(eq? (primref-name pr) 'exact?)
+              (fold-primref2 ir preinfo pr ret e* r* ctxt types t)]
+             #;[(and (fx= (length e*) 1)
                    (eq? (primref-name pr) 'exact?))
               (cond
                 [(predicate-implies? (car r*) 'exact-integer)
