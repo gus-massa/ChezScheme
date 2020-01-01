@@ -683,43 +683,38 @@ Notes:
   (define-syntax define-inline
     (lambda (x)
       (syntax-case x ()
-        ((_key lev prim clause ...)
+        [(_key lev prim clause ...)
          (identifier? #'prim)
-         #'(_key lev (prim) clause ...))
-        ((_key lev (prim ...) clause ...)
+         #'(_key lev (prim) clause ...)]
+        [(_key lev (prim ...) clause ...)
          (andmap identifier? #'(prim ...))
          (with-implicit (_key level pr ctxt types ntypes preinfo r* ret)
            (with-syntax
-             ((key (case (datum lev)
-                     ((2) #'cptypes2)
-                     ((3) #'cptypes3)
-                     (else ($oops #f "invalid inline level ~s" (datum lev)))))
-              (body
-                (let f ((clauses #'(clause ...)))
+             ([key (case (datum lev)
+                     [(2) #'cptypes2]
+                     [(3) #'cptypes3]
+                     [else ($oops #f "invalid inline level ~s" (datum lev))])]
+              [body
+                (let loop ([clauses #'(clause ...)])
                   (if (null? clauses)
                       #'#f
-                      (with-syntax ((rest (f (cdr clauses))))
+                      (with-syntax ((rest (loop (cdr clauses))))
                         (syntax-case (car clauses) ()
-                          (((x ...) e1 e2 ...)
-                           (with-syntax ((n (length #'(x ...))))
+                          [((x ...) b1 b2 ...)
+                           #;guard: (andmap identifier? #'(x ...))
+                           (with-syntax ([n (length #'(x ...))])
                              #'(if (eq? count n)
-                                   (apply (lambda (x ...) e1 e2 ...) args)
-                                   rest)))
-                          ((r e1 e2 ...)
-                           (identifier? #'r)
-                           #'(apply (lambda r e1 e2 ...) args))
-                          ((r e1 e2 ...)
-                           (with-syntax ((n (let loop ((r #'r) (n 0))
-                                              (syntax-case r ()
-                                                ((v . r)
-                                                 (identifier? #'v)
-                                                 (loop #'r (+ n 1)))
-                                                (v
-                                                  (identifier? #'v)
-                                                  n)))))
+                                   (apply (lambda (x ...) b1 b2 ...) e*)
+                                   rest))]
+                          [(r b1 b2 ...)
+                           #;guard: (identifier? #'r)
+                           #'(apply (lambda r b1 b2 ...) e*)]
+                          [((x ... . r) b1 b2 ...)
+                           #;guard: (and (andmap identifier? #'(x ...)) (identifier? #'r))
+                           (with-syntax ([n (length #'(x ...))])
                              #'(if (fx>= count n)
-                                   (apply (lambda r e1 e2 ...) args)
-                                   rest)))))))))
+                                   (apply (lambda (x ... . r) b1 b2 ...) e*)
+                                   rest))]))))])
              (for-each
                (lambda (sym-name)
                  (let ([sym-key (datum key)])
@@ -733,14 +728,15 @@ Notes:
                                ($sgetprop sym-name '*flags* 0))
                        (warningf #f "undeclared ~s handler for ~s~%" sym-key sym-name))))
                (datum (prim ...)))
-             #'(let ((foo (lambda (prim-name)
-                            (lambda (level preinfo pr ret args r* ctxt types ntypes)
-                              (let ([count (length args)])
-                                body)))))
-                 ($sputprop 'prim 'key (foo 'prim)) ...)))))))
+             #'(let ([foo (lambda (prim-name)
+                            (lambda (level preinfo pr ret e* r* ctxt types ntypes)
+                              (let ([count (length e*)])
+                                body)))])
+                 ($sputprop 'prim 'key (foo 'prim)) ...)))])))
 
   (with-output-language (Lsrc Expr)
 
+    ;(lambda () (handler level preinfo pr ret e* r* ctxt types ntypes))
     (define-inline 2 exact?
       [(n) (let ([r (car r*)])
              (cond
