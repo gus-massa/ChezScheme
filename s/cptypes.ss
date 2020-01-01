@@ -680,15 +680,22 @@ Notes:
 
   (module ()
   (let ()
+  
+  (define get-type-key)
+  
   (define-syntax define-inline
     (lambda (x)
+      (define (make-get-type-name id)
+        (datum->syntax-object id
+          (gensym (string-append (symbol->string (syntax->datum id))
+                                 "-ret-type"))))
       (syntax-case x ()
         [(_key lev prim clause ...)
          (identifier? #'prim)
          #'(_key lev (prim) clause ...)]
         [(_key lev (prim ...) clause ...)
          (andmap identifier? #'(prim ...))
-         (with-implicit (_key level pr ctxt types ntypes preinfo r* ret)
+         (with-implicit (_key level pr ctxt types ntypes preinfo ret)
            (with-syntax
              ([key (case (datum lev)
                      [(2) #'cptypes2]
@@ -700,6 +707,16 @@ Notes:
                       #'#f
                       (with-syntax ((rest (loop (cdr clauses))))
                         (syntax-case (car clauses) ()
+                          [((x) b1 b2 ...)
+                           #;guard: (identifier? #'x)
+                           (with-syntax ([x_r (make-get-type-name #'x)])
+                             #'(let ()
+                                 (if (eq? count 1)
+                                     ((lambda (x x_r)
+                                        (define-property x get-type-key #'x_r)
+                                        b1 b2 ...)
+                                      (car e*) (car r*))
+                                     rest)))]
                           [((x ...) b1 b2 ...)
                            #;guard: (andmap identifier? #'(x ...))
                            (with-syntax ([n (length #'(x ...))])
@@ -721,12 +738,12 @@ Notes:
                    (if (getprop sym-name sym-key #f)
                        (warningf #f "duplicate ~s handler for ~s" sym-key sym-name)
                        (putprop sym-name sym-key #t))
-                   #;(unless (all-set?
-                               (case (datum lev)
-                                 [(2) (prim-mask cptypes2)]
-                                 [(3) (prim-mask cptypes3)])
-                               ($sgetprop sym-name '*flags* 0))
-                       (warningf #f "undeclared ~s handler for ~s~%" sym-key sym-name))))
+                   (unless (all-set?
+                             (case (datum lev)
+                               [(2) (prim-mask cptypes2)]
+                               [(3) (prim-mask cptypes3)])
+                             ($sgetprop sym-name '*flags* 0))
+                     (warningf #f "undeclared ~s handler for ~s~%" sym-key sym-name))))
                (datum (prim ...)))
              #'(let ([foo (lambda (prim-name)
                             (lambda (level preinfo pr ret e* r* ctxt types ntypes)
@@ -734,24 +751,29 @@ Notes:
                                 body)))])
                  ($sputprop 'prim 'key (foo 'prim)) ...)))])))
 
+
+  (define-syntax (get-type stx)
+    (lambda (lookup)
+      (syntax-case stx ()
+        [(_ id) (lookup #'id #'get-type-key)])))
+
   (with-output-language (Lsrc Expr)
 
     ;(lambda () (handler level preinfo pr ret e* r* ctxt types ntypes))
     (define-inline 2 exact?
-      [(n) (let ([r (car r*)])
-             (cond
-               [(predicate-implies? r 'exact-integer)
-                (values (make-seq ctxt n true-rec)
-                        true-rec ntypes #f #f)]
-               [(predicate-implies? r 'flonum)
-                (values (make-seq ctxt n false-rec)
-                        false-rec ntypes #f #f)]
-               [(and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
-                     (predicate-implies? r 'number))
-                (let ([pr (primref->unsafe-primref pr)])
-                  (values `(call ,preinfo ,pr ,n) ret ntypes #f #f))]
-               [else
-                (values `(call ,preinfo ,pr ,n) ret ntypes #f #f)]))])
+      [(n) (cond
+             [(predicate-implies? (get-type n) 'exact-integer)
+              (values (make-seq ctxt n true-rec)
+                      true-rec ntypes #f #f)]
+             [(predicate-implies? (get-type n) 'flonum)
+              (values (make-seq ctxt n false-rec)
+                      false-rec ntypes #f #f)]
+             [(and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
+                   (predicate-implies? (get-type n) 'number))
+              (let ([pr (primref->unsafe-primref pr)])
+                (values `(call ,preinfo ,pr ,n) ret ntypes #f #f))]
+             [else
+              (values `(call ,preinfo ,pr ,n) ret ntypes #f #f)])])
   )
   (void)) (void))
   
