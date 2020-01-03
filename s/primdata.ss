@@ -180,8 +180,8 @@
 )
 
 (define-symbol-flags* ([libraries (rnrs) (rnrs base)] [flags primitive proc])
-  (eqv? [sig [(ptr ptr) -> (boolean)]] [flags pure unrestricted mifoldable discard cp02 ieee r5rs])
-  (eq? [sig [(ptr ptr) -> (boolean)]] [flags pure unrestricted mifoldable discard cp02 ieee r5rs])
+  (eqv? [sig [(ptr ptr) -> (boolean)]] [flags pure unrestricted mifoldable discard cp02 cptypes2 ieee r5rs])
+  (eq? [sig [(ptr ptr) -> (boolean)]] [flags pure unrestricted mifoldable discard cp02 cptypes2 ieee r5rs])
   (equal? [sig [(ptr ptr) -> (boolean)]] [flags unrestricted mifoldable discard cp02 ieee r5rs])
   (procedure? [sig [(ptr) -> (boolean)]] [flags pure unrestricted mifoldable discard ieee r5rs cp02])
   (number? [sig [(ptr) -> (boolean)]] [flags pure unrestricted mifoldable discard ieee r5rs])

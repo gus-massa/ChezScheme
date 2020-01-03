@@ -707,21 +707,16 @@ Notes:
                       #'#f
                       (with-syntax ((rest (loop (cdr clauses))))
                         (syntax-case (car clauses) ()
-                          [((x) b1 b2 ...)
-                           #;guard: (identifier? #'x)
-                           (with-syntax ([x_r (make-get-type-name #'x)])
-                             #'(let ()
-                                 (if (eq? count 1)
-                                     ((lambda (x x_r)
-                                        (define-property x get-type-key #'x_r)
-                                        b1 b2 ...)
-                                      (car e*) (car r*))
-                                     rest)))]
                           [((x ...) b1 b2 ...)
                            #;guard: (andmap identifier? #'(x ...))
-                           (with-syntax ([n (length #'(x ...))])
+                           (with-syntax ([n (length #'(x ...))]
+                                         [(x_r ...) (map make-get-type-name #'(x ...))])
                              #'(if (eq? count n)
-                                   (apply (lambda (x ...) b1 b2 ...) e*)
+                                   (apply
+                                    (apply (lambda (x ...)
+                                             (lambda (x_r ...)
+                                               (begin (define-property x get-type-key #'x_r) ...)
+                                               (begin b1 b2 ...))) e*) r*)
                                    rest))]
                           [(r b1 b2 ...)
                            #;guard: (identifier? #'r)
@@ -774,6 +769,24 @@ Notes:
                 (values `(call ,preinfo ,pr ,n) ret ntypes #f #f))]
              [else
               (values `(call ,preinfo ,pr ,n) ret ntypes #f #f)])])
+
+    (define-inline 2 (eq? eqv?)
+      [(e1 e2) (let ([r1 (get-type e1)]
+                     [r2 (get-type e2)])
+                  (cond
+                    [(or (predicate-implies-not? r1 r2)
+                         (predicate-implies-not? r2 r1))
+                     (values (make-seq ctxt (make-seq 'effect e1 e2) false-rec)
+                             false-rec ntypes #f #f)]
+                    [else
+                     (values `(call ,preinfo ,pr ,e1 ,e2)
+                             ret
+                             ntypes
+                             (and (eq? ctxt 'test)
+                                  (pred-env-add/ref
+                                   (pred-env-add/ref ntypes e1 r2)
+                                   e2 r1))
+                             #f)]))])
   )
   (void)) (void))
   
@@ -1070,6 +1083,10 @@ Notes:
              [(not (arity-okay? (primref-arity pr) (length e*)))
               (values `(call ,preinfo ,pr ,e* ...) 'bottom pred-env-bottom #f #f)]
              [(and (fx= (length e*) 2)
+                   (or (eq? (primref-name pr) 'eq?)
+                       (eq? (primref-name pr) 'eqv?)))
+              (fold-primref2 ir preinfo pr ret e* r* ctxt types t)]
+             #;[(and (fx= (length e*) 2)
                    (or (eq? (primref-name pr) 'eq?)
                        (eq? (primref-name pr) 'eqv?)))
                 (let ([r1 (car r*)]
