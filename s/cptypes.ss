@@ -679,120 +679,133 @@ Notes:
 
 
   (module ()
-  (let ()
+    (with-output-language (Lsrc Expr)
   
-  (define get-type-key)
+      (define (make-default-call preinfo pr e*)
+        `(call ,preinfo ,pr ,e* ...))
+    
+      (define get-type-key)
+      
+      (define-syntax define-inline
+        (lambda (x)
+          (define (make-get-type-name id)
+            (datum->syntax-object id
+              (gensym (string-append (symbol->string (syntax->datum id))
+                                     "-ret-type"))))
+          (syntax-case x ()
+            [(_key lev prim clause ...)
+             (identifier? #'prim)
+             #'(_key lev (prim) clause ...)]
+            [(_key lev (prim ...) clause ...)
+             (andmap identifier? #'(prim ...))
+             (with-implicit (_key level preinfo pr ret ctxt types ntypes)
+               (with-syntax
+                 ([key (case (datum lev)
+                         [(2) #'cptypes2]
+                         [(3) #'cptypes3]
+                         [else ($oops #f "invalid inline level ~s" (datum lev))])]
+                  [body
+                    (let loop ([clauses #'(clause ...)])
+                      (if (null? clauses)
+                          #'(values (make-default-call preinfo pr e*) ret ntypes #f #f)
+                          (with-syntax ((rest (loop (cdr clauses))))
+                            (syntax-case (car clauses) ()
+                              [((x ...) b1 b2 ...)
+                               #;guard: (andmap identifier? #'(x ...))
+                               (with-syntax ([n (length #'(x ...))]
+                                             [(x_r ...) (map make-get-type-name #'(x ...))])
+                                 #'(if (eq? count n)
+                                       (apply
+                                        (apply (lambda (x ...)
+                                                 (lambda (x_r ...)
+                                                   (begin (define-property x get-type-key #'x_r) ...)
+                                                   (begin b1 b2 ...))) e*) r*)
+                                       rest))]
+                              [(r b1 b2 ...)
+                               #;guard: (identifier? #'r)
+                               (with-syntax ([r_r (make-get-type-name #'r)])
+                                 #'(apply
+                                    (apply (lambda r
+                                             (lambda r_r
+                                               (define-property r get-type-key #'r_r)
+                                               b1 b2 ...)) e*) r*))]
+                              [((x ... . r) b1 b2 ...)
+                               #;guard: (and (andmap identifier? #'(x ...)) (identifier? #'r))
+                               (with-syntax ([n (length #'(x ...))]
+                                             [(x_r ...) (map make-get-type-name #'(x ...))]
+                                             [r_r (make-get-type-name #'r)])
+                                 #'(if (fx>= count n)
+                                       (apply 
+                                         (apply (lambda (x ... . r)
+                                                  (lambda (x_r ... . r_r)
+                                                    (begin (define-property x get-type-key #'x_r) ...)
+                                                    (define-property r get-type-key #'r_r)
+                                                     b1 b2 ...)) e*) r*)
+                                       rest))]))))])
+                 (for-each
+                   (lambda (sym-name)
+                     (let ([sym-key (datum key)])
+                       (if (getprop sym-name sym-key #f)
+                           (warningf #f "duplicate ~s handler for ~s" sym-key sym-name)
+                           (putprop sym-name sym-key #t))
+                       (unless (all-set?
+                                 (case (datum lev)
+                                   [(2) (prim-mask cptypes2)]
+                                   [(3) (prim-mask cptypes3)])
+                                 ($sgetprop sym-name '*flags* 0))
+                         (warningf #f "undeclared ~s handler for ~s~%" sym-key sym-name))))
+                   (datum (prim ...)))
+                 #'(let ([foo (lambda (prim-name)
+                                (lambda (preinfo pr e* ret r* ctxt types ntypes)
+                                  (let ([level (if (all-set? (prim-mask unsafe) (primref-flags pr)) 3 2)]    
+                                        [count (length e*)])
+                                    body)))])
+                     ($sputprop 'prim 'key (foo 'prim)) ...)))])))
+    
+    
+      (define-syntax (get-type stx)
+        (lambda (lookup)
+          (syntax-case stx ()
+            [(_ id) (or (lookup #'id #'get-type-key)
+                        ($oops 'get-type "invalid identifier ~s" #'id))])))
+    
+    
+        (define-inline 2 exact?
+          [(n) (cond
+                 [(predicate-implies? (get-type n) 'exact-integer)
+                  (values (make-seq ctxt n true-rec)
+                          true-rec ntypes #f #f)]
+                 [(predicate-implies? (get-type n) 'flonum)
+                  (values (make-seq ctxt n false-rec)
+                          false-rec ntypes #f #f)]
+                 [(and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
+                       (predicate-implies? (get-type n) 'number))
+                  (let ([pr (primref->unsafe-primref pr)])
+                    (values `(call ,preinfo ,pr ,n) ret ntypes #f #f))]
+                 [else
+                  (values `(call ,preinfo ,pr ,n) ret ntypes #f #f)])])
+    
+        (define-inline 2 (eq? eqv?)
+          [(e1 e2) (let ([r1 (get-type e1)]
+                         [r2 (get-type e2)])
+                      (cond
+                        [(or (predicate-implies-not? r1 r2)
+                             (predicate-implies-not? r2 r1))
+                         (values (make-seq ctxt (make-seq 'effect e1 e2) false-rec)
+                                 false-rec ntypes #f #f)]
+                        [else
+                         (values `(call ,preinfo ,pr ,e1 ,e2)
+                                 ret
+                                 ntypes
+                                 (and (eq? ctxt 'test)
+                                      (pred-env-add/ref
+                                       (pred-env-add/ref ntypes e1 r2)
+                                       e2 r1))
+                                 #f)]))])
+  ))
   
-  (define-syntax define-inline
-    (lambda (x)
-      (define (make-get-type-name id)
-        (datum->syntax-object id
-          (gensym (string-append (symbol->string (syntax->datum id))
-                                 "-ret-type"))))
-      (syntax-case x ()
-        [(_key lev prim clause ...)
-         (identifier? #'prim)
-         #'(_key lev (prim) clause ...)]
-        [(_key lev (prim ...) clause ...)
-         (andmap identifier? #'(prim ...))
-         (with-implicit (_key level pr ctxt types ntypes preinfo ret)
-           (with-syntax
-             ([key (case (datum lev)
-                     [(2) #'cptypes2]
-                     [(3) #'cptypes3]
-                     [else ($oops #f "invalid inline level ~s" (datum lev))])]
-              [body
-                (let loop ([clauses #'(clause ...)])
-                  (if (null? clauses)
-                      #'#f
-                      (with-syntax ((rest (loop (cdr clauses))))
-                        (syntax-case (car clauses) ()
-                          [((x ...) b1 b2 ...)
-                           #;guard: (andmap identifier? #'(x ...))
-                           (with-syntax ([n (length #'(x ...))]
-                                         [(x_r ...) (map make-get-type-name #'(x ...))])
-                             #'(if (eq? count n)
-                                   (apply
-                                    (apply (lambda (x ...)
-                                             (lambda (x_r ...)
-                                               (begin (define-property x get-type-key #'x_r) ...)
-                                               (begin b1 b2 ...))) e*) r*)
-                                   rest))]
-                          [(r b1 b2 ...)
-                           #;guard: (identifier? #'r)
-                           #'(apply (lambda r b1 b2 ...) e*)]
-                          [((x ... . r) b1 b2 ...)
-                           #;guard: (and (andmap identifier? #'(x ...)) (identifier? #'r))
-                           (with-syntax ([n (length #'(x ...))])
-                             #'(if (fx>= count n)
-                                   (apply (lambda (x ... . r) b1 b2 ...) e*)
-                                   rest))]))))])
-             (for-each
-               (lambda (sym-name)
-                 (let ([sym-key (datum key)])
-                   (if (getprop sym-name sym-key #f)
-                       (warningf #f "duplicate ~s handler for ~s" sym-key sym-name)
-                       (putprop sym-name sym-key #t))
-                   (unless (all-set?
-                             (case (datum lev)
-                               [(2) (prim-mask cptypes2)]
-                               [(3) (prim-mask cptypes3)])
-                             ($sgetprop sym-name '*flags* 0))
-                     (warningf #f "undeclared ~s handler for ~s~%" sym-key sym-name))))
-               (datum (prim ...)))
-             #'(let ([foo (lambda (prim-name)
-                            (lambda (level preinfo pr ret e* r* ctxt types ntypes)
-                              (let ([count (length e*)])
-                                body)))])
-                 ($sputprop 'prim 'key (foo 'prim)) ...)))])))
-
-
-  (define-syntax (get-type stx)
-    (lambda (lookup)
-      (syntax-case stx ()
-        [(_ id) (lookup #'id #'get-type-key)])))
-
-  (with-output-language (Lsrc Expr)
-
-    ;(lambda () (handler level preinfo pr ret e* r* ctxt types ntypes))
-    (define-inline 2 exact?
-      [(n) (cond
-             [(predicate-implies? (get-type n) 'exact-integer)
-              (values (make-seq ctxt n true-rec)
-                      true-rec ntypes #f #f)]
-             [(predicate-implies? (get-type n) 'flonum)
-              (values (make-seq ctxt n false-rec)
-                      false-rec ntypes #f #f)]
-             [(and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
-                   (predicate-implies? (get-type n) 'number))
-              (let ([pr (primref->unsafe-primref pr)])
-                (values `(call ,preinfo ,pr ,n) ret ntypes #f #f))]
-             [else
-              (values `(call ,preinfo ,pr ,n) ret ntypes #f #f)])])
-
-    (define-inline 2 (eq? eqv?)
-      [(e1 e2) (let ([r1 (get-type e1)]
-                     [r2 (get-type e2)])
-                  (cond
-                    [(or (predicate-implies-not? r1 r2)
-                         (predicate-implies-not? r2 r1))
-                     (values (make-seq ctxt (make-seq 'effect e1 e2) false-rec)
-                             false-rec ntypes #f #f)]
-                    [else
-                     (values `(call ,preinfo ,pr ,e1 ,e2)
-                             ret
-                             ntypes
-                             (and (eq? ctxt 'test)
-                                  (pred-env-add/ref
-                                   (pred-env-add/ref ntypes e1 r2)
-                                   e2 r1))
-                             #f)]))])
-  )
-  (void)) (void))
-  
-  (define (fold-primref2 ir preinfo pr ret e* r* ctxt types ntypes)
+  (define (fold-primref preinfo pr e* ret r* ctxt types ntypes)
     (let* ([flags (primref-flags pr)]
-           [level (if (all-set? (prim-mask unsafe) flags) 3 2)]    
            [prim-name (primref-name pr)]
            [handler (or (and (all-set? (prim-mask unsafe) flags)
                              (all-set? (prim-mask cptypes3) flags)
@@ -801,18 +814,12 @@ Notes:
                              ($sgetprop prim-name 'cptypes2 #f)))])
       (if handler
           (call-with-values
-            (lambda () (handler level preinfo pr ret e* r* ctxt types ntypes))
+            (lambda () (handler preinfo pr e* ret r* ctxt types ntypes))
             (case-lambda
               [(ir2 ret2 types2 t-types2 f-types2)
                (values ir2 ret2 types2 t-types2 f-types2)]
-              [else ($oops 'fold-primref2 "UNEXPECTED")]))
+              [else ($oops 'fold-primref "result of inline handler can't be #f")]))
           (values `(call ,preinfo ,pr ,e* ...) #f types #f #f))))
-
-
-
-
-
-
 
   (define (map-values l f v*)
     ; `l` is the default lenght, in case `v*` is null. 
@@ -1082,10 +1089,11 @@ Notes:
               (values `(call ,preinfo ,pr ,e* ...) 'bottom pred-env-bottom #f #f)]
              [(not (arity-okay? (primref-arity pr) (length e*)))
               (values `(call ,preinfo ,pr ,e* ...) 'bottom pred-env-bottom #f #f)]
-             [(and (fx= (length e*) 2)
-                   (or (eq? (primref-name pr) 'eq?)
-                       (eq? (primref-name pr) 'eqv?)))
-              (fold-primref2 ir preinfo pr ret e* r* ctxt types t)]
+             [(memq (primref-name pr) '(eq? eqv? exact?))
+              (fold-primref preinfo pr e* ret r* ctxt types t)]
+             [(or (eq? (primref-name pr) 'eq?)
+                  (eq? (primref-name pr) 'eqv?))
+              (fold-primref preinfo pr e* ret r* ctxt types t)]
              #;[(and (fx= (length e*) 2)
                    (or (eq? (primref-name pr) 'eq?)
                        (eq? (primref-name pr) 'eqv?)))
@@ -1181,7 +1189,7 @@ Notes:
                 [else
                  (values `(call ,preinfo ,pr ,e* ...) 'pair t #f #f)])]
              [(eq? (primref-name pr) 'exact?)
-              (fold-primref2 ir preinfo pr ret e* r* ctxt types t)]
+              (fold-primref preinfo pr e* ret r* ctxt types t)]
              #;[(and (fx= (length e*) 1)
                    (eq? (primref-name pr) 'exact?))
               (cond
