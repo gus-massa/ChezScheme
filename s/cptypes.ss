@@ -771,20 +771,17 @@ Notes:
     
     
         (define-inline 2 exact?
-          [(n) (cond
-                 [(predicate-implies? (get-type n) 'exact-integer)
-                  (values (make-seq ctxt n true-rec)
-                          true-rec ntypes #f #f)]
-                 [(predicate-implies? (get-type n) 'flonum)
-                  (values (make-seq ctxt n false-rec)
-                          false-rec ntypes #f #f)]
-                 [(and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
-                       (predicate-implies? (get-type n) 'number))
-                  (let ([pr (primref->unsafe-primref pr)])
-                    (values `(call ,preinfo ,pr ,n) ret ntypes #f #f))]
-                 [else
-                  (values `(call ,preinfo ,pr ,n) ret ntypes #f #f)])])
-    
+          [(n) (let ([r (get-type n)])
+                 (cond
+                   [(predicate-implies? r 'exact-integer)
+                    (values (make-seq ctxt n true-rec)
+                            true-rec ntypes #f #f)]
+                   [(predicate-implies? r 'flonum)
+                    (values (make-seq ctxt n false-rec)
+                            false-rec ntypes #f #f)]
+                   [else
+                    (values `(call ,preinfo ,pr ,n) ret ntypes #f #f)]))])
+
         (define-inline 2 (eq? eqv?)
           [(e1 e2) (let ([r1 (get-type e1)]
                          [r2 (get-type e2)])
@@ -819,7 +816,8 @@ Notes:
               [(ir2 ret2 types2 t-types2 f-types2)
                (values ir2 ret2 types2 t-types2 f-types2)]
               [else ($oops 'fold-primref "result of inline handler can't be #f")]))
-          (values `(call ,preinfo ,pr ,e* ...) #f types #f #f))))
+          (with-output-language (Lsrc Expr)
+            (values `(call ,preinfo ,pr ,e* ...) ret ntypes #f #f)))))
 
   (define (map-values l f v*)
     ; `l` is the default lenght, in case `v*` is null. 
@@ -1089,11 +1087,6 @@ Notes:
               (values `(call ,preinfo ,pr ,e* ...) 'bottom pred-env-bottom #f #f)]
              [(not (arity-okay? (primref-arity pr) (length e*)))
               (values `(call ,preinfo ,pr ,e* ...) 'bottom pred-env-bottom #f #f)]
-             [(memq (primref-name pr) '(eq? eqv? exact?))
-              (fold-primref preinfo pr e* ret r* ctxt types t)]
-             [(or (eq? (primref-name pr) 'eq?)
-                  (eq? (primref-name pr) 'eqv?))
-              (fold-primref preinfo pr e* ret r* ctxt types t)]
              #;[(and (fx= (length e*) 2)
                    (or (eq? (primref-name pr) 'eq?)
                        (eq? (primref-name pr) 'eqv?)))
@@ -1188,8 +1181,6 @@ Notes:
                  (values null-rec null-rec t #f #f)]
                 [else
                  (values `(call ,preinfo ,pr ,e* ...) 'pair t #f #f)])]
-             [(eq? (primref-name pr) 'exact?)
-              (fold-primref preinfo pr e* ret r* ctxt types t)]
              #;[(and (fx= (length e*) 1)
                    (eq? (primref-name pr) 'exact?))
               (cond
@@ -1222,17 +1213,16 @@ Notes:
                            ret t #f #f))]
                 [else
                  (values `(call ,preinfo ,pr ,e* ...) ret t #f #f)])]
-             [(and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
-                   (all-set? (prim-mask safeongoodargs) (primref-flags pr))
-                   (andmap (lambda (r n)
-                             (predicate-implies? r
-                                                 (primref->argument-predicate pr n #f)))
-                           r* (enumerate r*)))
-               (let ([pr (primref->unsafe-primref pr)])
-                 (values `(call ,preinfo ,pr ,e* ...)
-                         ret types #f #f))]
              [else
-              (values `(call ,preinfo ,pr ,e* ...) ret t #f #f)])))]
+              (let ([pr (if (and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
+                                 (all-set? (prim-mask safeongoodargs) (primref-flags pr))
+                                 (andmap (lambda (r n)
+                                           (predicate-implies? r
+                                                               (primref->argument-predicate pr n #f)))
+                                         r* (enumerate r*)))
+                            (primref->unsafe-primref pr)
+                            pr)])
+                (fold-primref preinfo pr e* ret r* ctxt types t))])))]
       [(case-lambda ,preinfo ,cl* ...)
        (let ([cl* (map (lambda (cl)
                         (nanopass-case (Lsrc CaseLambdaClause) cl
