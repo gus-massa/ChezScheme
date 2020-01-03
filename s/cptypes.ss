@@ -680,12 +680,12 @@ Notes:
 
   (module ()
     (with-output-language (Lsrc Expr)
-  
+
       (define (make-default-call preinfo pr e*)
         `(call ,preinfo ,pr ,e* ...))
-    
+
       (define get-type-key)
-      
+
       (define-syntax define-inline
         (lambda (x)
           (define (make-get-type-name id)
@@ -761,26 +761,12 @@ Notes:
                                         [count (length e*)])
                                     body)))])
                      ($sputprop 'prim 'key (foo 'prim)) ...)))])))
-    
-    
+
       (define-syntax (get-type stx)
         (lambda (lookup)
           (syntax-case stx ()
             [(_ id) (or (lookup #'id #'get-type-key)
                         ($oops 'get-type "invalid identifier ~s" #'id))])))
-    
-    
-        (define-inline 2 exact?
-          [(n) (let ([r (get-type n)])
-                 (cond
-                   [(predicate-implies? r 'exact-integer)
-                    (values (make-seq ctxt n true-rec)
-                            true-rec ntypes #f #f)]
-                   [(predicate-implies? r 'flonum)
-                    (values (make-seq ctxt n false-rec)
-                            false-rec ntypes #f #f)]
-                   [else
-                    (values `(call ,preinfo ,pr ,n) ret ntypes #f #f)]))])
 
         (define-inline 2 (eq? eqv?)
           [(e1 e2) (let ([r1 (get-type e1)]
@@ -799,8 +785,20 @@ Notes:
                                        (pred-env-add/ref ntypes e1 r2)
                                        e2 r1))
                                  #f)]))])
+
+        (define-inline 2 exact?
+          [(n) (let ([r (get-type n)])
+                 (cond
+                   [(predicate-implies? r 'exact-integer)
+                    (values (make-seq ctxt n true-rec)
+                            true-rec ntypes #f #f)]
+                   [(predicate-implies? r 'flonum)
+                    (values (make-seq ctxt n false-rec)
+                            false-rec ntypes #f #f)]
+                   [else
+                    (values `(call ,preinfo ,pr ,n) ret ntypes #f #f)]))])
   ))
-  
+
   (define (fold-primref preinfo pr e* ret r* ctxt types ntypes)
     (let* ([flags (primref-flags pr)]
            [prim-name (primref-name pr)]
