@@ -385,7 +385,7 @@ Notes:
       [(fxvector? d) 'fxvector]
       [else #f]))
 
-  (define (rtd->record-predicate rtd)
+  (define (rtd->record-predicate rtd extend?)
     (cond
       [(Lsrc? rtd)
        (nanopass-case (Lsrc Expr) rtd
@@ -396,9 +396,9 @@ Notes:
           (guard (not (prelex-assigned x)))
           (make-pred-$record/ref x)]
          [(record-type ,rtd ,e)
-          (rtd->record-predicate e)]
-         [else '$record])]
-      [else '$record]))
+          (rtd->record-predicate e extend?)]
+         [else (if (not extend?) 'bottom '$record)])]
+      [else (if (not extend?) 'bottom '$record)]))
 
   ; when extend is #f the result is a predicate that recognizes less values
   ; than the one in name. This is useful for reductions like
@@ -686,6 +686,14 @@ Notes:
 
       (define get-type-key)
 
+      (define (expr-is-rtd? x types)
+        (nanopass-case (Lsrc Expr) x ; ensure that it is actually a rtd
+          [(quote ,d)
+           (record-type-descriptor? d)]
+          [(record-type ,rtd ,e) #t]
+          ; TODO: extend the type system to include rtd
+          [else #f]))
+
       (define-syntax define-inline
         (lambda (x)
           (define (make-get-type-name id)
@@ -698,7 +706,7 @@ Notes:
              #'(_key lev (prim) clause ...)]
             [(_key lev (prim ...) clause ...)
              (andmap identifier? #'(prim ...))
-             (with-implicit (_key level preinfo pr ret ctxt types ntypes)
+             (with-implicit (_key level preinfo pr ret ctxt oldtypes ntypes)
                (with-syntax
                  ([key (case (datum lev)
                          [(2) #'cptypes2]
@@ -756,7 +764,7 @@ Notes:
                          (warningf #f "undeclared ~s handler for ~s~%" sym-key sym-name))))
                    (datum (prim ...)))
                  #'(let ([foo (lambda (prim-name)
-                                (lambda (preinfo pr e* ret r* ctxt types ntypes)
+                                (lambda (preinfo pr e* ret r* ctxt ntypes oldtypes)
                                   (let ([level (if (all-set? (prim-mask unsafe) (primref-flags pr)) 3 2)]    
                                         [count (length e*)])
                                     body)))])
@@ -768,54 +776,124 @@ Notes:
             [(_ id) (or (lookup #'id #'get-type-key)
                         ($oops 'get-type "invalid identifier ~s" #'id))])))
 
-        (define-inline 2 (eq? eqv?)
-          [(e1 e2) (let ([r1 (get-type e1)]
-                         [r2 (get-type e2)])
-                      (cond
-                        [(or (predicate-implies-not? r1 r2)
-                             (predicate-implies-not? r2 r1))
-                         (values (make-seq ctxt (make-seq 'effect e1 e2) false-rec)
-                                 false-rec ntypes #f #f)]
-                        [else
-                         (values `(call ,preinfo ,pr ,e1 ,e2)
-                                 ret
-                                 ntypes
-                                 (and (eq? ctxt 'test)
-                                      (pred-env-add/ref
-                                       (pred-env-add/ref ntypes e1 r2)
-                                       e2 r1))
-                                 #f)]))])
+      (define-inline 2 (eq? eqv?)
+        [(e1 e2) (let ([r1 (get-type e1)]
+                       [r2 (get-type e2)])
+                    (cond
+                      [(or (predicate-implies-not? r1 r2)
+                           (predicate-implies-not? r2 r1))
+                       (values (make-seq ctxt (make-seq 'effect e1 e2) false-rec)
+                               false-rec ntypes #f #f)]
+                      [else
+                       (values `(call ,preinfo ,pr ,e1 ,e2)
+                               ret
+                               ntypes
+                               (and (eq? ctxt 'test)
+                                    (pred-env-add/ref
+                                     (pred-env-add/ref ntypes e1 r2)
+                                     e2 r1))
+                               #f)]))])
 
-        (define-inline 2 exact?
-          [(n) (let ([r (get-type n)])
-                 (cond
-                   [(predicate-implies? r 'exact-integer)
-                    (values (make-seq ctxt n true-rec)
-                            true-rec ntypes #f #f)]
-                   [(predicate-implies? r 'flonum)
-                    (values (make-seq ctxt n false-rec)
-                            false-rec ntypes #f #f)]
-                   [else
-                    (values `(call ,preinfo ,pr ,n) ret ntypes #f #f)]))])
+      (define-inline 2 list
+        [() (values null-rec null-rec ntypes #f #f)] ; should have been reduced by cp0
+        [e* (values `(call ,preinfo ,pr ,e* ...) 'pair ntypes #f #f)])
+
+      (define-inline 2 $record
+        [(rtd . e*) (values `(call ,preinfo ,pr ,rtd ,e* ...) (rtd->record-predicate rtd #t) ntypes #f #f)])
+
+      (define-inline 2 (record? $sealed-record?)
+        [(val rtd) (let* ([val-type (get-type val)]
+                          [to-unsafe (and (fx= level 2) 
+                                          (expr-is-rtd? rtd oldtypes))] ; use the old types
+                          [level (if to-unsafe 3 level)]
+                          [pr (if to-unsafe
+                                  (primref->unsafe-primref pr)
+                                  pr)])
+                     (cond
+                       [(predicate-implies? val-type (rtd->record-predicate rtd #f))
+                        (values (make-seq ctxt (make-seq 'effect val rtd) true-rec)
+                                true-rec ntypes #f #f)]
+                       [(predicate-implies-not? val-type (rtd->record-predicate rtd #t))
+                        (cond
+                          [(fx= level 3)
+                           (values (make-seq ctxt (make-seq 'effect val rtd) false-rec)
+                                   false-rec ntypes #f #f)]
+                          [else
+                           (values (make-seq ctxt `(call ,preinfo ,pr ,val ,rtd) false-rec)
+                                   false-rec ntypes #f #f)])]
+                       [else
+                        (values `(call ,preinfo ,pr ,val ,rtd)
+                                  ret
+                                  ntypes
+                                  (and (eq? ctxt 'test)
+                                       (pred-env-add/ref ntypes val (rtd->record-predicate rtd #t)))
+                                  #f)]))])
+
+      (define-inline 2 exact?
+        [(n) (let ([r (get-type n)])
+               (cond
+                 [(predicate-implies? r 'exact-integer)
+                  (values (make-seq ctxt n true-rec)
+                          true-rec ntypes #f #f)]
+                 [(predicate-implies? r 'flonum)
+                  (values (make-seq ctxt n false-rec)
+                          false-rec ntypes #f #f)]
+                 [else
+                  (values `(call ,preinfo ,pr ,n) ret ntypes #f #f)]))])
+
+      (define-inline 2 inexact?
+        [(n) (let ([r (get-type n)])
+               (cond
+                 [(predicate-implies? r 'exact-integer)
+                  (values (make-seq ctxt n false-rec)
+                          false-rec ntypes #f #f)]
+                 [(predicate-implies? r 'flonum)
+                  (values (make-seq ctxt n true-rec)
+                          true-rec ntypes #f #f)]
+                 [else
+                  (values `(call ,preinfo ,pr ,n) ret ntypes #f #f)]))])
   ))
 
-  (define (fold-primref preinfo pr e* ret r* ctxt types ntypes)
-    (let* ([flags (primref-flags pr)]
-           [prim-name (primref-name pr)]
-           [handler (or (and (all-set? (prim-mask unsafe) flags)
-                             (all-set? (prim-mask cptypes3) flags)
-                             ($sgetprop prim-name 'cptypes3 #f))
-                        (and (all-set? (prim-mask cptypes2) flags)
-                             ($sgetprop prim-name 'cptypes2 #f)))])
-      (if handler
-          (call-with-values
-            (lambda () (handler preinfo pr e* ret r* ctxt types ntypes))
-            (case-lambda
-              [(ir2 ret2 types2 t-types2 f-types2)
-               (values ir2 ret2 types2 t-types2 f-types2)]
-              [else ($oops 'fold-primref "result of inline handler can't be #f")]))
-          (with-output-language (Lsrc Expr)
-            (values `(call ,preinfo ,pr ,e* ...) ret ntypes #f #f)))))
+  (define (fold-predicate preinfo pr e* ret r* ctxt ntypes oldtypes)
+    (let ([val (car e*)]
+          [val-type (car r*)])
+      (cond
+        [(predicate-implies? val-type (primref->predicate pr #f))
+         (values (make-seq ctxt val true-rec)
+                 true-rec ntypes #f #f)]
+        [(predicate-implies-not? val-type (primref->predicate pr #t))
+         (values (make-seq ctxt val false-rec)
+                 false-rec ntypes #f #f)]
+        [else
+         (values (with-output-language (Lsrc Expr)
+                   `(call ,preinfo ,pr ,val))
+                 ret
+                 ntypes
+                 (and (eq? ctxt 'test)
+                      (pred-env-add/ref ntypes val (primref->predicate pr #t)))
+                 #f)])))
+
+  (define (fold-primref preinfo pr e* ret r* ctxt ntypes oldtypes)
+    (cond
+      [(and (fx= (length e*) 1) (primref->predicate pr #t))
+       (fold-predicate preinfo pr e* ret r* ctxt ntypes oldtypes)]
+      [else
+       (let* ([flags (primref-flags pr)]
+              [prim-name (primref-name pr)]
+              [handler (or (and (all-set? (prim-mask unsafe) flags)
+                                (all-set? (prim-mask cptypes3) flags)
+                                ($sgetprop prim-name 'cptypes3 #f))
+                           (and (all-set? (prim-mask cptypes2) flags)
+                                ($sgetprop prim-name 'cptypes2 #f)))])
+         (if handler
+             (call-with-values
+               (lambda () (handler preinfo pr e* ret r* ctxt ntypes oldtypes))
+               (case-lambda
+                 [(ir2 ret2 types2 t-types2 f-types2)
+                  (values ir2 ret2 types2 t-types2 f-types2)]
+                 [else ($oops 'fold-primref "result of inline handler can't be #f")]))
+             (with-output-language (Lsrc Expr)
+               (values `(call ,preinfo ,pr ,e* ...) ret ntypes #f #f))))]))
 
   (define (map-values l f v*)
     ; `l` is the default lenght, in case `v*` is null. 
@@ -1085,142 +1163,17 @@ Notes:
               (values `(call ,preinfo ,pr ,e* ...) 'bottom pred-env-bottom #f #f)]
              [(not (arity-okay? (primref-arity pr) (length e*)))
               (values `(call ,preinfo ,pr ,e* ...) 'bottom pred-env-bottom #f #f)]
-             #;[(and (fx= (length e*) 2)
-                   (or (eq? (primref-name pr) 'eq?)
-                       (eq? (primref-name pr) 'eqv?)))
-                (let ([r1 (car r*)]
-                      [r2 (cadr r*)]
-                      [e1 (car e*)]
-                      [e2 (cadr e*)])
-                  (cond
-                    [(or (predicate-implies-not? r1 r2)
-                         (predicate-implies-not? r2 r1))
-                     (values (make-seq ctxt (make-seq 'effect e1 e2) false-rec)
-                             false-rec t #f #f)]
-                    [else
-                     (values `(call ,preinfo ,pr ,e* ...)
-                             ret
-                             types
-                             (and (eq? ctxt 'test)
-                                  (pred-env-add/ref
-                                   (pred-env-add/ref t e1 r2)
-                                   e2 r1))
-                             #f)]))]
-             [(and (fx= (length e*) 1)
-                   (primref->predicate pr #t))
-              (let ([var (car r*)]
-                    [pred (primref->predicate pr #f)])
-                (cond
-                    [(predicate-implies? var pred)
-                     (values (make-seq ctxt (car e*) true-rec)
-                             true-rec t #f #f)]
-                    [else
-                     (let ([pred (primref->predicate pr #t)])
-                       (cond
-                         [(predicate-implies-not? var pred)
-                          (values (make-seq ctxt (car e*) false-rec)
-                                  false-rec t #f #f)]
-                         [else
-                          (values `(call ,preinfo ,pr ,e* ...)
-                                  ret
-                                  types
-                                  (and (eq? ctxt 'test)
-                                       (pred-env-add/ref t (car e*) pred))
-                                  #f)]))]))]
-             [(and (fx>= (length e*) 1)
-                   (eq? (primref-name pr) '$record))
-              (values `(call ,preinfo ,pr ,e* ...) (rtd->record-predicate (car e*)) t #f #f)]
-             [(and (fx= (length e*) 2)
-                   (or (eq? (primref-name pr) 'record?)
-                       (eq? (primref-name pr) '$sealed-record?)))
-              (let ([pred (rtd->record-predicate (cadr e*))]
-                    [var (car r*)])
-                (cond
-                  [(predicate-implies-not? var pred)
-                   (cond
-                     [(or (all-set? (prim-mask unsafe) (primref-flags pr))
-                          (nanopass-case (Lsrc Expr) (cadr e*) ; ensure that it is actually a rtd
-                            [(quote ,d)
-                             (record-type-descriptor? d)]
-                            [(record-type ,rtd ,e) #t]
-                            [else #f]))
-                      (values (make-seq ctxt (make-seq 'effect (car e*) (cadr e*)) false-rec)
-                              false-rec t #f #f)]
-                     [else
-                      (values (make-seq ctxt ir false-rec)
-                              false-rec t #f #f)])]
-                  [(and (not (eq? pred '$record)) ; assume that the only extension is '$record
-                        (predicate-implies? var pred))
-                   (values (make-seq ctxt (make-seq 'effect (car e*) (cadr e*)) true-rec)
-                           true-rec t #f #f)]
-                  [(and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
-                        (nanopass-case (Lsrc Expr) (cadr e*) ; check that it is a rtd
-                          [(quote ,d)
-                           (record-type-descriptor? d)]
-                          [(record-type ,rtd ,e) #t]
-                          [else #f]))
-                   (let ([pr (primref->unsafe-primref pr)])
-                     (values `(call ,preinfo ,pr ,e* ...)
-                             ret types
-                             (and (eq? ctxt 'test)
-                                  (pred-env-add/ref types (car e*) pred))
-                             #f))]
-                  [else
-                   (values `(call ,preinfo ,pr ,e* ...)
-                           ret
-                           types
-                           (and (eq? ctxt 'test)
-                                (pred-env-add/ref types (car e*) pred))
-                           #f)]))]
-             [(eq? (primref-name pr) 'list)
-              (cond 
-                [(null? e*)
-                 ;should have be reduced by cp0
-                 (values null-rec null-rec t #f #f)]
-                [else
-                 (values `(call ,preinfo ,pr ,e* ...) 'pair t #f #f)])]
-             #;[(and (fx= (length e*) 1)
-                   (eq? (primref-name pr) 'exact?))
-              (cond
-                [(predicate-implies? (car r*) 'exact-integer)
-                 (values (make-seq ctxt (car e*) true-rec)
-                         true-rec t #f #f)]
-                [(predicate-implies? (car r*) 'flonum)
-                 (values (make-seq ctxt (car e*) false-rec)
-                         false-rec t #f #f)]
-                [(and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
-                      (predicate-implies? (car r*) 'number))
-                 (let ([pr (primref->unsafe-primref pr)])
-                   (values `(call ,preinfo ,pr ,e* ...)
-                           ret t #f #f))]
-                [else
-                 (values `(call ,preinfo ,pr ,e* ...) ret t #f #f)])]
-             [(and (fx= (length e*) 1)
-                   (eq? (primref-name pr) 'inexact?))
-              (cond
-                [(predicate-implies? (car r*) 'exact-integer)
-                 (values (make-seq ctxt (car e*) false-rec)
-                         false-rec t #f #f)]
-                [(predicate-implies? (car r*) 'flonum)
-                 (values (make-seq ctxt (car e*) true-rec)
-                         true-rec t #f #f)]
-                [(and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
-                      (predicate-implies? (car r*) 'number))
-                 (let ([pr (primref->unsafe-primref pr)])
-                   (values `(call ,preinfo ,pr ,e* ...)
-                           ret t #f #f))]
-                [else
-                 (values `(call ,preinfo ,pr ,e* ...) ret t #f #f)])]
              [else
-              (let ([pr (if (and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
-                                 (all-set? (prim-mask safeongoodargs) (primref-flags pr))
-                                 (andmap (lambda (r n)
-                                           (predicate-implies? r
-                                                               (primref->argument-predicate pr n #f)))
-                                         r* (enumerate r*)))
+              (let* ([to-unsafe (and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
+                                     (all-set? (prim-mask safeongoodargs) (primref-flags pr))
+                                     (andmap (lambda (r n)
+                                               (predicate-implies? r
+                                                                   (primref->argument-predicate pr n #f)))
+                                             r* (enumerate r*)))]
+                     [pr (if to-unsafe
                             (primref->unsafe-primref pr)
                             pr)])
-                (fold-primref preinfo pr e* ret r* ctxt types t))])))]
+                (fold-primref preinfo pr e* ret r* ctxt t types))])))]
       [(case-lambda ,preinfo ,cl* ...)
        (let ([cl* (map (lambda (cl)
                         (nanopass-case (Lsrc CaseLambdaClause) cl
@@ -1341,7 +1294,7 @@ Notes:
       [(record ,rtd ,[rtd-expr 'value types -> rtd-expr ret-re types-re t-types-re f-types-re]
                ,[e* 'value types -> e* r* t* t-t* f-t*] ...)
        (values `(record ,rtd ,rtd-expr ,e* ...)
-               (rtd->record-predicate rtd-expr)
+               (rtd->record-predicate rtd-expr #t)
                (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)
                #f #f)]
       [(record-ref ,rtd ,type ,index ,[e 'value types -> e ret types t-types f-types])
