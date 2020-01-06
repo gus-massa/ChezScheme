@@ -337,11 +337,11 @@
   (vector-for-each [sig [(procedure vector vector ...) -> (ptr ...)]] [flags cp03])
   (error [sig [(maybe-who string ptr ...) -> (bottom)]] [flags abort-op])
   (assertion-violation [sig [(maybe-who string ptr ...) -> (bottom)]] [flags abort-op])
-  (apply [sig [(procedure ptr ... list) -> (ptr ...)]] [flags cp02 ieee r5rs])
+  (apply [sig [(procedure ptr ... list) -> (ptr ...)]] [flags cp02 cptypes2x ieee r5rs])
   (call-with-current-continuation [sig [(procedure) -> (ptr ...)]] [flags ieee r5rs])
   (call/cc [sig [(procedure) -> (ptr ...)]] [flags])
   (values [sig [(ptr ...) -> (ptr ...)]] [flags unrestricted discard cp02 ieee r5rs])
-  (call-with-values [sig [(procedure procedure) -> (ptr ...)]] [flags cp02 ieee r5rs])
+  (call-with-values [sig [(procedure procedure) -> (ptr ...)]] [flags cp02 cptypes2x ieee r5rs])
   ((r6rs: dynamic-wind) [sig [(procedure procedure procedure) -> (ptr ...)]] [flags ieee r5rs])      ; restricted to 3 arguments
 )
 
@@ -1770,7 +1770,7 @@
   ($address->object [flags single-valued])
   ($allocate-thread-parameter [feature pthreads] [flags single-valued alloc])
   ($app [flags])
-  ($apply [flags])
+  ($apply [sig [(procedure exact-integer list) -> (ptr ...)]] [flags cptypes2x])
   ($assembly-output [flags single-valued])
   ($as-time-goes-by [flags])
   ($bignum-length [flags single-valued pure true])

@@ -1632,7 +1632,9 @@
   (unrestricted             #b00010000000000000000000)
   (safeongoodargs           #b00100000000000000000000)
   (cptypes2                 #b01000000000000000000000)
-  (cptypes3                 #b10000000000000000000000)
+  (cptypes3                 cptypes2)
+  (cptypes2x                cptypes2)
+  (cptypes3x                cptypes2)
   (arith-op                 (or proc pure true))
   (alloc                    (or proc discard true))
   ; would be nice to check that these and only these actually have cp0 partial folders
