@@ -993,3 +993,15 @@
          (apply f l)
          222)))
 )
+
+(mat cptypes-delay
+  (cptypes-equivalent-expansion?
+    '(lambda (b) (map (lambda (x) (box? b)) (unbox b)))
+    '(lambda (b) (map (lambda (x) #t) (unbox b))))
+  (cptypes-equivalent-expansion?
+    '(lambda (b) (list (lambda (x) (box? b)) (unbox b)))
+    '(lambda (b) (list (lambda (x) #t) (unbox b))))
+  (cptypes-equivalent-expansion?
+    '(lambda (b) (list (unbox b) (lambda (x) (box? b))))
+    '(lambda (b) (list (unbox b) (lambda (x) #t))))
+)

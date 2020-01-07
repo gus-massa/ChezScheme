@@ -999,37 +999,36 @@ Notes:
           (fold-primref/next preinfo pr e* ctxt oldtypes))))
 
   (define (fold-primref/next preinfo pr e* ctxt oldtypes)
-    (let-values ([(e* r* t* t-t* f-t*)
-                  (map-values 5 (lambda (e) (Expr e 'value oldtypes)) e*)])
-     (let* ([t (fold-left (lambda (f x) (pred-env-intersect/base f x oldtypes)) oldtypes t*)]
-            [ret (primref->result-predicate pr)])
-       (let-values ([(ret t)
-                     (let loop ([e* e*] [r* r*] [n 0] [ret ret] [t t])
-                       (if (null? e*)
-                           (values ret t)
-                           (let ([pred (primref->argument-predicate pr n #t)])
-                             (loop (cdr e*)
-                                   (cdr r*)
-                                   (fx+ n 1)
-                                   (if (predicate-implies-not? (car r*) pred)
-                                       'bottom
-                                       ret)
-                                   (pred-env-add/ref t (car e*) pred)))))])
-         (cond
-           [(or (predicate-implies? ret 'bottom)
-                (not (arity-okay? (primref-arity pr) (length e*))))
-           (fold-primref/default preinfo pr e* 'bottom r* ctxt pred-env-bottom oldtypes)]
-           [else
-            (let* ([to-unsafe (and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
-                                   (all-set? (prim-mask safeongoodargs) (primref-flags pr))
-                                   (andmap (lambda (r n)
-                                             (predicate-implies? r
-                                                                 (primref->argument-predicate pr n #f)))
-                                           r* (enumerate r*)))]
-                   [pr (if to-unsafe
-                          (primref->unsafe-primref pr)
-                          pr)])
-              (fold-primref/normal preinfo pr e* ret r* ctxt t oldtypes))])))))
+    (let-values ([(t e* r* t* t-t* f-t*)
+                  (map-Expr/delayed e* oldtypes)])
+      (let ([ret (primref->result-predicate pr)])
+        (let-values ([(ret t)
+                      (let loop ([e* e*] [r* r*] [n 0] [ret ret] [t t])
+                        (if (null? e*)
+                            (values ret t)
+                            (let ([pred (primref->argument-predicate pr n #t)])
+                              (loop (cdr e*)
+                                    (cdr r*)
+                                    (fx+ n 1)
+                                    (if (predicate-implies-not? (car r*) pred)
+                                        'bottom
+                                        ret)
+                                    (pred-env-add/ref t (car e*) pred)))))])
+          (cond
+            [(or (predicate-implies? ret 'bottom)
+                 (not (arity-okay? (primref-arity pr) (length e*))))
+            (fold-primref/default preinfo pr e* 'bottom r* ctxt pred-env-bottom oldtypes)]
+            [else
+             (let* ([to-unsafe (and (not (all-set? (prim-mask unsafe) (primref-flags pr)))
+                                    (all-set? (prim-mask safeongoodargs) (primref-flags pr))
+                                    (andmap (lambda (r n)
+                                              (predicate-implies? r
+                                                                  (primref->argument-predicate pr n #f)))
+                                            r* (enumerate r*)))]
+                    [pr (if to-unsafe
+                           (primref->unsafe-primref pr)
+                           pr)])
+               (fold-primref/normal preinfo pr e* ret r* ctxt t oldtypes))])))))
 
   (define (fold-primref/normal preinfo pr e* ret r* ctxt ntypes oldtypes)
     (cond
@@ -1055,6 +1054,38 @@ Notes:
   (define (fold-primref/default preinfo pr e* ret r* ctxt ntypes oldtypes)
     (with-output-language (Lsrc Expr)
       (values `(call ,preinfo ,pr ,e* ...) ret ntypes #f #f)))
+
+  (define (map-Expr/delayed e* oldtypes)
+    (define first-pass* (map (lambda (e)
+                               (nanopass-case (Lsrc Expr) e
+                                 [(case-lambda ,preinfo ,cl* ...)
+                                  (cons 'delayed e)]
+                                 [else
+                                   (cons 'ready
+                                         (call-with-values
+                                           (lambda () (Expr e 'value oldtypes))
+                                           list))]))
+                             e*))
+    (define fp-types (fold-left (lambda (t x)
+                                  (if (eq? (car x) 'ready)
+                                      (pred-env-intersect/base t (caddr (cdr x)) oldtypes)
+                                      t))
+                                oldtypes
+                                first-pass*))
+    (define second-pass* (map (lambda (e)
+                                (cond
+                                  [(eq? (car e) 'delayed)
+                                   (call-with-values
+                                            (lambda () (Expr (cdr e) 'value fp-types))
+                                            list)]
+                                  [else
+                                   (cdr e)]))
+                              first-pass*))
+    (define sp-types fp-types) ; since they are only lambdas, they add no new info.
+    (define untransposed (if (null? second-pass*)
+                             '(() () () () ())
+                             (apply map list second-pass*)))
+    (apply values sp-types untransposed))
 
   (define (map-values l f v*)
     ; `l` is the default lenght, in case `v*` is null. 
