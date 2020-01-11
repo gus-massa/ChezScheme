@@ -1061,7 +1061,7 @@ Notes:
          (let*-values ([(body ret n-types/x t-types/x f-types/x)
                        (Expr body ctxt ntypes/x)]
                        [(n-types t-types f-types)
-                        (pred-env-triple-filter/base n-types/x t-types/x f-types/x x* ctxt ntypes)])  
+                        (pred-env-triple-filter/base n-types/x t-types/x f-types/x x* ctxt ntypes)])
           (with-output-language (Lsrc Expr)
              (values
                `(call ,preinfo (case-lambda ,preinfo2 (clause (,x* ...) ,interface ,body)) ,e* ...)
@@ -1366,94 +1366,33 @@ Notes:
          (values `(case-lambda ,preinfo ,cl* ...) 'procedure types #f #f))]
       [(call ,preinfo (case-lambda ,preinfo2 ,cl* ...) ,e*  ...)
        (fold-call/lambda preinfo `(case-lambda ,preinfo2 ,cl* ...) e* ctxt types)]
-      #;[(call ,preinfo (case-lambda ,preinfo2 (clause (,x** ...) ,interface* ,body*) ...)
-             ,[e* 'value types -> e* r* t* t-t* f-t*] ...)
-       ;; pulled from cpnanopass
-       (define find-matching-clause
-         (lambda (len x** interface* body* kfixed kvariable kfail)
-           (let f ([x** x**] [interface* interface*] [body* body*])
-             (if (null? interface*)
-                 (kfail)
-                 (let ([interface (car interface*)])
-                   (if (fx< interface 0)
-                       (let ([nfixed (fxlognot interface)])
-                         (if (fx>= len nfixed)
-                             (kvariable nfixed (car x**) (car body*))
-                             (f (cdr x**) (cdr interface*) (cdr body*))))
-                       (if (fx= interface len)
-                           (kfixed (car x**) (car body*))
-                           (f (cdr x**) (cdr interface*) (cdr body*)))))))))
-       (define finish
-         (lambda (x* interface body t)
-           (let-values ([(body ret n-types t-types f-types)
-                         (Expr body ctxt t)])
-             (let* ([new-types (fold-left (lambda (f x) (pred-env-remove/base f x types)) n-types x*)]
-                    [t-types (and (eq? ctxt 'test)
-                                  t-types
-                                  (not (eq? n-types t-types))
-                                  (fold-left (lambda (f x) (pred-env-remove/base f x new-types)) t-types x*))]
-                    [f-types (and (eq? ctxt 'test)
-                                  f-types
-                                  (not (eq? n-types f-types))
-                                  (fold-left (lambda (f x) (pred-env-remove/base f x new-types)) f-types x*))])
-               (for-each (lambda (x) (prelex-operand-set! x #f)) x*)
-               (values
-                 `(call ,preinfo (case-lambda ,preinfo2 (clause (,x* ...) ,interface ,body)) ,e* ...)
-                 ret new-types t-types f-types)))))
-       (let ([t (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)]
-             [len (length e*)])
-         (find-matching-clause (length e*) x** interface* body*
-           (lambda (x* body) (finish x* len body (fold-left pred-env-add t x* r*)))
-           (lambda (nfixed x* body)
-             (finish x* (fxlognot nfixed) body
-               (fold-left pred-env-add t x*
-                 (let f ([i nfixed] [r* r*])
-                   (if (fx= i 0)
-                       (list (if (null? r*) null-rec 'pair))
-                       (cons (car r*) (f (fx- i 1) (cdr r*))))))))
-           (lambda () (values ir 'bottom pred-env-bottom #f #f))))]
       [(call ,preinfo ,e0 ,e*  ...)
        (fold-call/other preinfo e0 e* ctxt types)]
-      [(letrec ((,x* ,[e* 'value types -> e* r* t* t-t* t-f*]) ...) ,body)
-       (let* ([t (fold-left (lambda (f x) (pred-env-intersect/base f x types)) types t*)]
-              [t (fold-left pred-env-add t x* r*)])
-        (let-values ([(body ret n-types t-types f-types)
-                      (Expr body ctxt t)])
-          (let* ([new-types (fold-left (lambda (f x) (pred-env-remove/base f x types)) n-types x*)]
-                 [t-types (and (eq? ctxt 'test)
-                               t-types
-                               (not (eq? n-types t-types))
-                               (fold-left (lambda (f x) (pred-env-remove/base f x new-types)) t-types x*))]
-                 [f-types (and (eq? ctxt 'test)
-                               f-types
-                               (not (eq? n-types f-types))
-                               (fold-left (lambda (f x) (pred-env-remove/base f x new-types)) f-types x*))])
-            (for-each (lambda (x) (prelex-operand-set! x #f)) x*)
-            (values `(letrec ([,x* ,e*] ...) ,body)
-                    ret new-types t-types f-types))))]
+      [(letrec ((,x* ,e*) ...) ,body)
+       (let-values ([(ntypes e* r* t* t-t* f-t*)
+                     (map-Expr/delayed e* types)])
+         (let ([ntypes/x (fold-left pred-env-add ntypes x* r*)])
+           (let*-values ([(body ret n-types/x t-types/x f-types/x)
+                         (Expr body ctxt ntypes/x)]
+                         [(n-types t-types f-types)
+                          (pred-env-triple-filter/base n-types/x t-types/x f-types/x x* ctxt ntypes)])
+               (values `(letrec ([,x* ,e*] ...) ,body)
+                       ret n-types t-types f-types))))]
       [(letrec* ((,x* ,e*) ...) ,body)
-       (let*-values ([(e* types)
+       (let*-values ([(e* ntypes/x)
                       (let loop ([x* x*] [e* e*] [types types] [rev-e* '()]) ; this is similar to an ordered-map
                         (if (null? x*)
                           (values (reverse rev-e*) types)
                           (let-values ([(e ret types t-types f-types)
                                         (Expr (car e*) 'value types)])
                             (let ([types (pred-env-add types (car x*) ret)])
-                              (loop (cdr x*) (cdr e*) types (cons e rev-e*))))))])
-        (let-values ([(body ret n-types t-types f-types)
-                      (Expr body ctxt types)])
-          (let* ([new-types (fold-left (lambda (f x) (pred-env-remove/base f x types)) n-types x*)]
-                 [t-types (and (eq? ctxt 'test)
-                               t-types
-                               (not (eq? n-types t-types))
-                               (fold-left (lambda (f x) (pred-env-remove/base f x new-types)) t-types x*))]
-                 [f-types (and (eq? ctxt 'test)
-                               f-types
-                               (not (eq? n-types f-types))
-                               (fold-left (lambda (f x) (pred-env-remove/base f x new-types)) f-types x*))])
-            (for-each (lambda (x) (prelex-operand-set! x #f)) x*)
-            (values `(letrec* ([,x* ,e*] ...) ,body)
-                    ret new-types t-types f-types))))]
+                              (loop (cdr x*) (cdr e*) types (cons e rev-e*))))))]
+                     [(body ret n-types/x t-types/x f-types/x)
+                      (Expr body ctxt ntypes/x)]
+                     [(n-types t-types f-types)
+                      (pred-env-triple-filter/base n-types/x t-types/x f-types/x x* ctxt types)])
+         (values `(letrec* ([,x* ,e*] ...) ,body)
+                 ret n-types t-types f-types))]
       [,pr
        (values ir
                (and (all-set? (prim-mask proc) (primref-flags pr)) 'procedure)
