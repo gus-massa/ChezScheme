@@ -1446,3 +1446,22 @@ Notes:
   (set! $cptypes cptypes)
 
 )
+
+; check to make sure all required handlers were seen, after expansion of the
+; expression above has been completed
+(let ()
+  (define-syntax (test-handlers sxt)
+    (for-each
+      (lambda (sym)
+        (let ([flags ($sgetprop sym '*flags* 0)])
+          (when (all-set? (prim-mask cptypes2) flags)
+            ; currently all the flags use the same bit
+            (let ([used (map (lambda (key) (and (getprop sym key #f)
+                                                (begin (remprop sym 'cp02) #t)))
+                             '(cptypes2 cptypes3 cptypes2x cptypes3x))])
+              (when (andmap not used)
+                ($oops #f "no cptypes handler for ~s" sym))))))
+      (oblist))
+    #'(void))
+  (test-handlers)
+)
