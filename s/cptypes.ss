@@ -957,6 +957,8 @@ Notes:
 
   ))
 
+  (with-output-language (Lsrc Expr)
+  
   (define (fold-predicate preinfo pr e* ret r* ctxt ntypes oldtypes)
     ; assume they never raise an error
     ; TODO?: Move to a define-inline
@@ -970,8 +972,7 @@ Notes:
          (values (make-seq ctxt val false-rec)
                  false-rec ntypes #f #f)]
         [else
-         (values (with-output-language (Lsrc Expr)
-                   `(call ,preinfo ,pr ,val))
+         (values `(call ,preinfo ,pr ,val)
                  ret
                  ntypes
                  (and (eq? ctxt 'test)
@@ -1052,8 +1053,7 @@ Notes:
              (fold-primref/default preinfo pr e* ret r* ctxt ntypes oldtypes)))]))
 
   (define (fold-primref/default preinfo pr e* ret r* ctxt ntypes oldtypes)
-    (with-output-language (Lsrc Expr)
-      (values `(call ,preinfo ,pr ,e* ...) ret ntypes #f #f)))
+    (values `(call ,preinfo ,pr ,e* ...) ret ntypes #f #f))
 
   (define (fold-call/lambda preinfo e0 e* ctxt oldtypes)
     (define (finish preinfo preinfo2 x* interface body e* r* ntypes)
@@ -1062,16 +1062,13 @@ Notes:
                        (Expr body ctxt ntypes/x)]
                        [(n-types t-types f-types)
                         (pred-env-triple-filter/base n-types/x t-types/x f-types/x x* ctxt ntypes)])
-          (with-output-language (Lsrc Expr)
-             (values
-               `(call ,preinfo (case-lambda ,preinfo2 (clause (,x* ...) ,interface ,body)) ,e* ...)
-               ret n-types t-types f-types)))))
+          (values `(call ,preinfo (case-lambda ,preinfo2 (clause (,x* ...) ,interface ,body)) ,e* ...)
+                  ret n-types t-types f-types))))
     (define (bad-arity preinfo e0 e* ctxt ntypes)
       (let*-values ([(e0 ret0 n-types0 t-types0 f-types0)
                      (Expr e0 'value ntypes)])
-        (with-output-language (Lsrc Expr)
-           (values `(call ,preinfo ,e0 ,e* ...)
-                   'bottom pred-env-bottom #f #f))))
+        (values `(call ,preinfo ,e0 ,e* ...)
+               'bottom pred-env-bottom #f #f)))
     (define (cut-r* r* n)
       (let loop ([i n] [r* r*])
         (if (fx= i 0)
@@ -1118,9 +1115,8 @@ Notes:
                    (map-Expr/delayed e* oldtypes)]
                   [(e0 ret0 types0 t-types0 f-types0)
                    (Expr/call e0 'value ntypes oldtypes)])
-      (with-output-language (Lsrc Expr)
-         (values `(call ,preinfo ,e0 ,e* ...)
-                 ret0 types0 t-types0 f-types0))))
+      (values `(call ,preinfo ,e0 ,e* ...)
+              ret0 types0 t-types0 f-types0)))
 
   (define (map-Expr/delayed e* oldtypes)
     (define first-pass* (map (lambda (e)
@@ -1192,8 +1188,7 @@ Notes:
          (cond
            [(null? cl*)
             (let ([retcl* (reverse rev-rcl*)]) 
-              (values (with-output-language (Lsrc Expr)
-                        `(case-lambda ,preinfo ,retcl* ...))
+              (values `(case-lambda ,preinfo ,retcl* ...)
                       rret rtypes rt-types rf-types))] 
            [else
             (nanopass-case (Lsrc CaseLambdaClause) (car cl*)
@@ -1253,7 +1248,7 @@ Notes:
                 (pred-env-add/ref (pred-env-intersect/base n-types types outtypes)
                                   ir 'procedure)
                 #f #f))]))
-
+  )
 )
     (Expr : Expr (ir ctxt types) -> Expr (ret types t-types f-types)
       [(quote ,d)
