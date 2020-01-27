@@ -1505,7 +1505,7 @@ Notes:
                                                 (begin (remprop sym 'cp02) #t)))
                              '(cptypes2 cptypes3 cptypes2x cptypes3x))])
               (when (andmap not used)
-                ($oops 'çptypes "no cptypes handler for ~s" sym))))))
+                ($oops #f "no cptypes handler for ~s" sym))))))
       (oblist))
     #'(void))
   (test-handlers)
