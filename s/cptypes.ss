@@ -763,7 +763,7 @@ Notes:
                    (lambda (sym-name)
                      (let ([sym-key (datum key)])
                        (if (getprop sym-name sym-key #f)
-                           (warningf #f "duplicate ~s handler for ~s" sym-key sym-name)
+                           (error #f "duplicate ~s handler for ~s" sym-key sym-name)
                            (putprop sym-name sym-key #t))
                        (unless (all-set?
                                  (case (datum lev)
