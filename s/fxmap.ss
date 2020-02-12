@@ -65,7 +65,8 @@
 
  ;; constants & empty
 
- (define empty-fxmap (make-$empty))
+ #;(define empty-fxmap (make-$empty))
+ (define empty-fxmap 'use-a-real-singleton-for-empty-fxmap)
 
  (define (fxmap-empty? x) (eq? empty-fxmap x))
 

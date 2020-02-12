@@ -150,7 +150,8 @@ Notes:
       (nongenerative #{$bottom koj7zosgebxioicmj4lgopip0-0})
       (sealed #t))
 
-    (define bottom-fxmap (make-$bottom))
+    #;(define bottom-fxmap (make-$bottom))
+    (define bottom-fxmap 'use-a-real-singleton-for-bottom-fxmap)
 
     (define pred-env-empty empty-fxmap)
 
