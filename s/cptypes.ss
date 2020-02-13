@@ -682,6 +682,28 @@ Notes:
   (define (primref->unsafe-primref pr)
     (lookup-primref 3 (primref-name pr)))
 
+  (define-threaded myprop-table #f)
+  (define-threaded my$sprop-table #f)
+
+  (define (mygetprop sym key def)
+    (unless myprop-table
+      (set! myprop-table (make-hashtable equal-hash equal?)))
+    (hashtable-ref myprop-table (cons sym key) def))
+
+  (define (my$sgetprop sym key def)
+    (unless my$sprop-table
+      (set! my$sprop-table (make-hashtable equal-hash equal?)))
+    (hashtable-ref my$sprop-table (cons sym key) def))
+
+  (define (myputprop sym key val)
+    (unless myprop-table
+      (set! myprop-table (make-hashtable equal-hash equal?)))
+    (hashtable-set! myprop-table (cons sym key) val))
+
+  (define (my$sputprop sym key val)
+    (unless my$sprop-table
+      (set! my$sprop-table (make-hashtable equal-hash equal?)))
+    (hashtable-set! my$sprop-table (cons sym key) val))
 
   (module ()
     (with-output-language (Lsrc Expr)
@@ -763,14 +785,14 @@ Notes:
                  (for-each
                    (lambda (sym-name)
                      (let ([sym-key (datum key)])
-                       (if (getprop sym-name sym-key #f)
+                       (if (mygetprop sym-name sym-key #f)
                            (error #f "duplicate ~s handler for ~s" sym-key sym-name)
-                           (putprop sym-name sym-key #t))
+                           (myputprop sym-name sym-key #t))
                        (unless (all-set?
                                  (case (datum lev)
                                    [(2) (prim-mask cptypes2)]
                                    [(3) (prim-mask cptypes3)])
-                                 ($sgetprop sym-name '*flags* 0))
+                                 (my$sgetprop sym-name '*flags* 0))
                          (warningf #f "undeclared ~s handler for ~s~%" sym-key sym-name))))
                    (datum (prim ...)))
                  #'(begin
@@ -779,7 +801,7 @@ Notes:
                                             [prim-name 'prim]
                                             [count (length e*)])
                                         body))])
-                       ($sputprop 'prim 'key handler)) ...)))])))
+                       (my$sputprop 'prim 'key handler)) ...)))])))
 
       ; Similar to define-specialize, but the arguments are not analyzed yet,
       ; so it's necesary to use Expr, Expr/call or a similar function to analyze them.
@@ -831,14 +853,14 @@ Notes:
                  (for-each
                    (lambda (sym-name)
                      (let ([sym-key (datum key)])
-                       (if (getprop sym-name sym-key #f)
+                       (if (mygetprop sym-name sym-key #f)
                            (warningf #f "duplicate ~s handler for ~s" sym-key sym-name)
-                           (putprop sym-name sym-key #t))
+                           (myputprop sym-name sym-key #t))
                        (unless (all-set?
                                  (case (datum lev)
                                    [(2) (prim-mask cptypes2x)]
                                    [(3) (prim-mask cptypes3x)])
-                                 ($sgetprop sym-name '*flags* 0))
+                                 (my$sgetprop sym-name '*flags* 0))
                          (warningf #f "undeclared ~s handler for ~s~%" sym-key sym-name))))
                    (datum (prim ...)))
                  #'(begin
@@ -847,7 +869,7 @@ Notes:
                                             [prim-name 'prim]
                                             [count (length e*)])
                                         body))])
-                       ($sputprop 'prim 'key handler)) ...)))])))
+                       (my$sputprop 'prim 'key handler)) ...)))])))
 
       (define-syntax (get-type stx)
         (lambda (lookup)
@@ -1042,9 +1064,9 @@ Notes:
            [prim-name (primref-name pr)]
            [handler (or (and (all-set? (prim-mask unsafe) flags)
                              (all-set? (prim-mask cptypes3x) flags)
-                             ($sgetprop prim-name 'cptypes3x #f))
+                             (my$sgetprop prim-name 'cptypes3x #f))
                         (and (all-set? (prim-mask cptypes2x) flags)
-                             ($sgetprop prim-name 'cptypes2x #f)))])
+                             (my$sgetprop prim-name 'cptypes2x #f)))])
       (if handler
           (call-with-values
             (lambda () (handler preinfo pr e* ctxt oldtypes fold-primref/next))
@@ -1095,9 +1117,9 @@ Notes:
               [prim-name (primref-name pr)]
               [handler (or (and (all-set? (prim-mask unsafe) flags)
                                 (all-set? (prim-mask cptypes3) flags)
-                                ($sgetprop prim-name 'cptypes3 #f))
+                                (my$sgetprop prim-name 'cptypes3 #f))
                            (and (all-set? (prim-mask cptypes2) flags)
-                                ($sgetprop prim-name 'cptypes2 #f)))])
+                                (my$sgetprop prim-name 'cptypes2 #f)))])
          (if handler
              (call-with-values
                (lambda () (handler preinfo pr e* ret r* ctxt ntypes oldtypes fold-primref/default))
@@ -1497,21 +1519,3 @@ Notes:
 
 )
 
-; check to make sure all required handlers were seen, after expansion of the
-; expression above has been completed
-(let ()
-  (define-syntax (test-handlers sxt)
-    (for-each
-      (lambda (sym)
-        (let ([flags ($sgetprop sym '*flags* 0)])
-          (when (all-set? (prim-mask cptypes2) flags)
-            ; currently all the flags use the same bit
-            (let ([used (map (lambda (key) (and (getprop sym key #f)
-                                                (begin (remprop sym 'cp02) #t)))
-                             '(cptypes2 cptypes3 cptypes2x cptypes3x))])
-              (when (andmap not used)
-                ($oops 'çptypes "no cptypes handler for ~s" sym))))))
-      (oblist))
-    #'(void))
-  (test-handlers)
-)
