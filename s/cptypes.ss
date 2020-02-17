@@ -682,23 +682,12 @@ Notes:
   (define (primref->unsafe-primref pr)
     (lookup-primref 3 (primref-name pr)))
 
-  (define-threaded myprop-table #f)
   (define-threaded my$sprop-table #f)
-
-  (define (mygetprop sym key def)
-    (unless myprop-table
-      (set! myprop-table (make-hashtable equal-hash equal?)))
-    (hashtable-ref myprop-table (cons sym key) def))
 
   (define (my$sgetprop sym key def)
     (unless my$sprop-table
       (set! my$sprop-table (make-hashtable equal-hash equal?)))
     (hashtable-ref my$sprop-table (cons sym key) def))
-
-  (define (myputprop sym key val)
-    (unless myprop-table
-      (set! myprop-table (make-hashtable equal-hash equal?)))
-    (hashtable-set! myprop-table (cons sym key) val))
 
   (define (my$sputprop sym key val)
     (unless my$sprop-table
@@ -785,14 +774,14 @@ Notes:
                  (for-each
                    (lambda (sym-name)
                      (let ([sym-key (datum key)])
-                       (if (mygetprop sym-name sym-key #f)
+                       (if (getprop sym-name sym-key #f)
                            (error #f "duplicate ~s handler for ~s" sym-key sym-name)
-                           (myputprop sym-name sym-key #t))
+                           (putprop sym-name sym-key #t))
                        (unless (all-set?
                                  (case (datum lev)
                                    [(2) (prim-mask cptypes2)]
                                    [(3) (prim-mask cptypes3)])
-                                 (my$sgetprop sym-name '*flags* 0))
+                                 ($sgetprop sym-name '*flags* 0))
                          (warningf #f "undeclared ~s handler for ~s~%" sym-key sym-name))))
                    (datum (prim ...)))
                  #'(begin
@@ -853,14 +842,14 @@ Notes:
                  (for-each
                    (lambda (sym-name)
                      (let ([sym-key (datum key)])
-                       (if (mygetprop sym-name sym-key #f)
+                       (if (getprop sym-name sym-key #f)
                            (warningf #f "duplicate ~s handler for ~s" sym-key sym-name)
-                           (myputprop sym-name sym-key #t))
+                           (putprop sym-name sym-key #t))
                        (unless (all-set?
                                  (case (datum lev)
                                    [(2) (prim-mask cptypes2x)]
                                    [(3) (prim-mask cptypes3x)])
-                                 (my$sgetprop sym-name '*flags* 0))
+                                 ($sgetprop sym-name '*flags* 0))
                          (warningf #f "undeclared ~s handler for ~s~%" sym-key sym-name))))
                    (datum (prim ...)))
                  #'(begin
@@ -1519,3 +1508,22 @@ Notes:
 
 )
 
+; check to make sure all required handlers were seen, after expansion of the
+; expression above has been completed
+#;
+(let ()
+  (define-syntax (test-handlers sxt)
+    (for-each
+      (lambda (sym)
+        (let ([flags ($sgetprop sym '*flags* 0)])
+          (when (all-set? (prim-mask cptypes2) flags)
+            ; currently all the flags use the same bit
+            (let ([used (map (lambda (key) (and (getprop sym key #f)
+                                                (begin (remprop sym 'cp02) #t)))
+                             '(cptypes2 cptypes3 cptypes2x cptypes3x))])
+              (when (andmap not used)
+                ($oops 'çptypes "no cptypes handler for ~s" sym))))))
+      (oblist))
+    #'(void))
+  (test-handlers)
+)
