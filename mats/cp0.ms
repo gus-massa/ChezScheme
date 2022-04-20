@@ -868,6 +868,11 @@
       (expand/optimize
         '(lambda (y x) (if y x x))))
     '(lambda (y x) x))
+  (equivalent-expansion?
+    (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
+      (expand/optimize
+        '(lambda (x) (if x car car))))
+    '(lambda (x) x))
  ; verify optimization of (if s s #f) => s
   (equivalent-expansion?
     (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])

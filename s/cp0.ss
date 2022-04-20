@@ -1719,6 +1719,12 @@
                       (if d1 d2 (not d2))
                       (eq? d1 d2))]
                  [else #f])]
+              [,pr1
+               (nanopass-case (Lsrc Expr) e2
+                 [,pr2
+                  (and (eq? (primref-name pr1) (primref-name pr2))
+                       (fx= (primref-flags pr1) (primref-flags pr2)))]
+                 [else #f])]
               [else #f]))))
 
     (module ()
