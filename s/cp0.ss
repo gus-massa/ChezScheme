@@ -1725,6 +1725,14 @@
                   (and (eq? (primref-name pr1) (primref-name pr2))
                        (fx= (primref-flags pr1) (primref-flags pr2)))]
                  [else #f])]
+              [(call ,preinfo1 ,pr1 (ref ,maybe-src1 ,x1))
+               (guard (memq (primref-name pr1) '(unbox car cdr)))
+               (nanopass-case (Lsrc Expr) e2
+                 [(call ,preinfo2 ,pr2 (ref ,maybe-src2 ,x2))
+                  (and (eq? (primref-name pr1) (primref-name pr2))
+                       (fx= (primref-flags pr1) (primref-flags pr2))
+                       (eq? x1 x2))]
+                 [else #f])]
               [else #f]))))
 
     (module ()

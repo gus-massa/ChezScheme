@@ -873,6 +873,21 @@
       (expand/optimize
         '(lambda (x) (if x car car))))
     '(lambda (x) x))
+  (equivalent-expansion?
+    (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
+      (expand/optimize
+        '(lambda (x y) (if x (unbox y) (unbox y)))))
+    '(lambda (x y) (unbox y)))
+  (equivalent-expansion?
+    (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
+      (expand/optimize
+        '(lambda (x y) (if x (car y) (car y)))))
+    '(lambda (x y) (car y)))
+  (equivalent-expansion?
+    (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
+      (expand/optimize
+        '(lambda (x y) (if x (cdr y) (cdr y)))))
+    '(lambda (x y) (cdr y)))
  ; verify optimization of (if s s #f) => s
   (equivalent-expansion?
     (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
