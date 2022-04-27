@@ -894,6 +894,11 @@
       (expand/optimize
         '(lambda (x) (if x x #f))))
     '(lambda (x) x))
+  (equivalent-expansion?
+    (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
+      (expand/optimize
+        '(lambda (x) (if (unbox x) (unbox x) #f))))
+    '(lambda (x) (unbox x)))
  ; verify optimization of (if s s #f) => s
   (equivalent-expansion?
     (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])

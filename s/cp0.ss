@@ -733,10 +733,12 @@
     (define make-if
       (lambda (ctxt sc e1 e2 e3)
         (cond
-          [(record-equal? e2 e3 ctxt) (make-seq ctxt e1 e2)]
+          [(and (eq? ctxt 'effect) (simple? e2) (simple? e3))
+           e1]
+          [(record-equal? e2 e3 ctxt)
+           (make-seq ctxt e1 e2)]
           [(and (cp0-constant? (lambda (x) (eq? x #f)) e3)
-                (record-equal? e1 e2 (if (eq? ctxt 'test) 'test 'value))
-                (simple? e1))
+                (record-equal? e1 e2 (if (eq? ctxt 'test) 'test 'value)))
            e1]
           [(nanopass-case (Lsrc Expr) (result-exp e1)
              [(if ,e11 ,[result-exp : e12 -> re12] ,[result-exp : e13 -> re13])
@@ -1705,35 +1707,33 @@
     (define record-equal?
       ; not very ambitious
       (lambda (e1 e2 ctxt)
-        (if (eq? ctxt 'effect)
-            (and (simple? e1) (simple? e2))
-            (nanopass-case (Lsrc Expr) e1
-              [(ref ,maybe-src1 ,x1)
-               (nanopass-case (Lsrc Expr) e2
-                 [(ref ,maybe-src2 ,x2) (eq? x1 x2)]
-                 [else #f])]
-              [(quote ,d1)
-               (nanopass-case (Lsrc Expr) e2
-                 [(quote ,d2)
-                  (if (eq? ctxt 'test)
-                      (if d1 d2 (not d2))
-                      (eq? d1 d2))]
-                 [else #f])]
-              [,pr1
-               (nanopass-case (Lsrc Expr) e2
-                 [,pr2
-                  (and (eq? (primref-name pr1) (primref-name pr2))
-                       (fx= (primref-flags pr1) (primref-flags pr2)))]
-                 [else #f])]
-              [(call ,preinfo1 ,pr1 (ref ,maybe-src1 ,x1))
-               (guard (memq (primref-name pr1) '(unbox car cdr)))
-               (nanopass-case (Lsrc Expr) e2
-                 [(call ,preinfo2 ,pr2 (ref ,maybe-src2 ,x2))
-                  (and (eq? (primref-name pr1) (primref-name pr2))
-                       (fx= (primref-flags pr1) (primref-flags pr2))
-                       (eq? x1 x2))]
-                 [else #f])]
-              [else #f]))))
+        (nanopass-case (Lsrc Expr) e1
+          [(ref ,maybe-src1 ,x1)
+           (nanopass-case (Lsrc Expr) e2
+             [(ref ,maybe-src2 ,x2) (eq? x1 x2)]
+             [else #f])]
+          [(quote ,d1)
+           (nanopass-case (Lsrc Expr) e2
+             [(quote ,d2)
+              (if (eq? ctxt 'test)
+                  (if d1 d2 (not d2))
+                  (eq? d1 d2))]
+             [else #f])]
+          [,pr1
+           (nanopass-case (Lsrc Expr) e2
+             [,pr2
+              (and (eq? (primref-name pr1) (primref-name pr2))
+                   (fx= (primref-flags pr1) (primref-flags pr2)))]
+             [else #f])]
+          [(call ,preinfo1 ,pr1 (ref ,maybe-src1 ,x1))
+           (guard (memq (primref-name pr1) '(unbox car cdr)))
+           (nanopass-case (Lsrc Expr) e2
+             [(call ,preinfo2 ,pr2 (ref ,maybe-src2 ,x2))
+              (and (eq? (primref-name pr1) (primref-name pr2))
+                   (fx= (primref-flags pr1) (primref-flags pr2))
+                   (eq? x1 x2))]
+             [else #f])]
+          [else #f])))
 
     (module ()
       (define-syntax define-inline
