@@ -881,6 +881,26 @@
   (equivalent-expansion?
     (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
       (expand/optimize
+        '(lambda (x y) (if x (#2%unbox y) (#2%unbox y)))))
+    '(lambda (x y) (#2%unbox y)))
+  (equivalent-expansion?
+    (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
+      (expand/optimize
+        '(lambda (x y) (if x (#2%unbox y) (#3%unbox y)))))
+    '(lambda (x y) (#2%unbox y)))
+  (equivalent-expansion?
+    (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
+      (expand/optimize
+        '(lambda (x y) (if x (#3%unbox y) (#2%unbox y)))))
+    '(lambda (x y) (#2%unbox y)))
+  (equivalent-expansion?
+    (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
+      (expand/optimize
+        '(lambda (x y) (if x (#3%unbox y) (#3%unbox y)))))
+    '(lambda (x y) (#3%unbox y)))
+  (equivalent-expansion?
+    (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
+      (expand/optimize
         '(lambda (x y) (if x (car y) (car y)))))
     '(lambda (x y) (car y)))
   (equivalent-expansion?
@@ -899,6 +919,26 @@
       (expand/optimize
         '(lambda (x) (if (unbox x) (unbox x) #f))))
     '(lambda (x) (unbox x)))
+  (equivalent-expansion?
+    (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
+      (expand/optimize
+        '(lambda (x) (if (#2%unbox x) (#2%unbox x) #f))))
+    '(lambda (x) (#2%unbox x)))
+  (equivalent-expansion?
+    (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
+      (expand/optimize
+        '(lambda (x) (if (#2%unbox x) (#3%unbox x) #f))))
+    '(lambda (x) (#2%unbox x)))
+  (equivalent-expansion?
+    (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
+      (expand/optimize
+        '(lambda (x) (if (#3%unbox x) (#2%unbox x) #f))))
+    '(lambda (x) (#2%unbox x)))
+  (equivalent-expansion?
+    (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
+      (expand/optimize
+        '(lambda (x) (if (#3%unbox x) (#3%unbox x) #f))))
+    '(lambda (x) (#3%unbox x)))
  ; verify optimization of (if s s #f) => s
   (equivalent-expansion?
     (parameterize ([enable-cp0 #t] [#%$suppress-primitive-inlining #f] [optimize-level 2] [compile-profile #f])
