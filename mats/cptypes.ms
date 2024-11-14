@@ -933,11 +933,23 @@
                         (fixnum? (abs x))))
          '(lambda (x) (when (fixnum? x)
                         #t))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (fixnum? x)
+                   (abs x)))
+    '(lambda (x) (when (fixnum? x)
+                   (if (#3%fx= x (most-negative-fixnum))
+                       (pariah (add1 (most-positive-fixnum)))
+                       (#3%fxabs x)))))
   (cptypes-equivalent-expansion? ; unexpected, but correct
     '(lambda (x) (when (bignum? x)
                    (bignum? (abs x))))
     '(lambda (x) (when (bignum? x)
                    #t)))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (flonum? x)
+                   (abs x)))
+    '(lambda (x) (when (flonum? x)
+                   (#3%flabs x))))
   (test-closed1 '(add1 1+ sub1 1- -1+ abs)
                 '(flonum? real? (lambda (x) (and (integer? x) (exact? x)))))
 )

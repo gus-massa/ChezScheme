@@ -1166,7 +1166,11 @@ Notes:
       (define-specialize 2 abs
         [(n) (let ([r (get-type n)])
                (cond
-                 ; not closed for fixnums
+                 [(predicate-implies? r 'fixnum)
+                  (values `(if (call ,(make-preinfo-call) ,(lookup-primref 3 'fx=)  ,n (quote ,(most-negative-fixnum)))
+                               ,(make-seq ctxt `(pariah) `(quote ,(add1 (most-positive-fixnum))))
+                               (call ,preinfo ,(lookup-primref 3 'fxabs) ,n))
+                          'exact-integer ntypes #f #f)]
                  [(predicate-implies? r 'bignum)
                   (values `(call ,preinfo ,pr ,n)
                           'bignum ntypes #f #f)]
