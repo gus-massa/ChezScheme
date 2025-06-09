@@ -988,6 +988,41 @@
                    (#3%flabs x))))
   (test-closed1 '(add1 1+ sub1 1- -1+ abs)
                 '(flonum? real? (lambda (x) (and (integer? x) (exact? x)))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x y) (when (and (fixnum? x) (fixnum? y))
+                     (+ x y)))
+    '(lambda (x y) (when (and (fixnum? x) (fixnum? y))
+                     (#3%$fxx+ x y))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x y) (when (and (flonum? x) (flonum? y))
+                     (+ x y)))
+    '(lambda (x y) (when (and (flonum? x) (flonum? y))
+                     (#3%fl+ x y))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x y) (when (and (number? x) (number? y))
+                     (+ x y)))
+    '(lambda (x y) (when (and (number? x) (number? y))
+                     (#3%+ x y))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (fixnum? x)
+                   (+ 1 x)))
+    '(lambda (x) (when (fixnum? x)
+                   (#3%$fxx+ 1 x))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (flonum? x)
+                   (+ 1 x)))
+    '(lambda (x) (when (flonum? x)
+                   (#3%fl+ 1.0 x))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (flonum? x)
+                   (+ 1 x)))
+    '(lambda (x) (when (flonum? x)
+                   (#3%fl+ 1.0 x))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (number? x)
+                   (+ x 1)))
+    '(lambda (x) (when (number? x)
+                   (#3%+ x 1))))
 )
 
 (mat cptypes-rest-argument

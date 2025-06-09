@@ -211,7 +211,7 @@
   (nan? [sig [(real) -> (boolean)]] [flags pure mifoldable discard safeongoodargs])
   (max [sig [(real real ...) -> (real)]] [flags arith-op mifoldable discard safeongoodargs ieee r5rs cptypes2])
   (min [sig [(real real ...) -> (real)]] [flags arith-op mifoldable discard safeongoodargs ieee r5rs cptypes2])
-  (+ [sig [(number ...) -> (number)]] [flags arith-op partial-folder safeongoodargs ieee r5rs])
+  (+ [sig [(number ...) -> (number)]] [flags arith-op partial-folder safeongoodargs ieee r5rs cptypes2])
   (* [sig [(number ...) -> (number)]] [flags arith-op partial-folder safeongoodargs ieee r5rs])
   (- [sig [(number number ...) -> (number)]] [flags arith-op partial-folder safeongoodargs ieee r5rs])
   (/ [sig [(number number ...) -> (number)]] [flags arith-op partial-folder ieee r5rs])

@@ -351,6 +351,20 @@ Notes:
            (nanopass-case (Lsrc Expr) v
              [(ref ,maybe-src ,x) (and (not (prelex-assigned x)) x)]
              [else #f])))
+
+    (define (real-exp->flonum-exp x r)
+      (cond
+        [(and (Lsrc? r)
+              (nanopass-case (Lsrc Expr) r
+                [(quote ,d) d]
+                [else #f])) =>
+         (lambda (d) (make-1seq 'effect x `(quote ,(real->flonum d))))]
+        [(predicate-implies? r 'fixnum)
+         `(call ,(make-preinfo-call) ,(lookup-primref 3 'fixnum->flonum) ,x)]
+        [(predicate-implies? r flonum-pred)
+         x]
+        [else
+         `(call ,(make-preinfo-call) ,(lookup-primref 3 'real->flonum) ,x)]))
   )
 
   (module (pred-env-empty pred-env-bottom
@@ -1146,6 +1160,38 @@ Notes:
                                   (and (eq? ctxt 'test)
                                        (pred-env-add/ref ntypes val (rtd->record-predicate rtd #t) plxc))
                                   #f)]))])
+      
+      (define-specialize 2 +
+        [(x y) (let ([rx (get-type x)]
+                     [ry (get-type y)])
+                 (cond
+                   [(predicate-implies? rx flonum-pred)
+                    (cond
+                      [(predicate-implies? ry real-pred)
+                       (values `(call ,preinfo ,(lookup-primref 3 'fl+)
+                                               ,x
+                                               ,(real-exp->flonum-exp y ry))
+                               flonum-pred ntypes #f #f)]
+                      [else
+                       (values `(call ,preinfo ,pr ,x ,y)
+                               ret ntypes #f #f)])]
+                   [(predicate-implies? ry flonum-pred)
+                    (cond
+                      [(predicate-implies? rx real-pred)
+                       (values `(call ,preinfo ,(lookup-primref 3 'fl+)
+                                               ,(real-exp->flonum-exp x rx)
+                                               ,y)
+                               flonum-pred ntypes #f #f)]
+                      [else
+                       (values `(call ,preinfo ,pr ,x ,y)
+                               ret ntypes #f #f)])]
+                   [(and (predicate-implies? rx 'fixnum)
+                         (predicate-implies? ry 'fixnum))
+                    (values `(call ,preinfo ,(lookup-primref 3 '$fxx+) ,x ,y)
+                            'exact-integer ntypes #f #f)]
+                   [else
+                    (values `(call ,preinfo ,pr ,x ,y)
+                            ret ntypes #f #f)]))])
 
       (define-specialize 2 (add1 sub1 1+ 1- -1+)
         [(n) (let ([r (get-type n)])
