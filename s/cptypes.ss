@@ -1162,36 +1162,23 @@ Notes:
                                   #f)]))])
       
       (define-specialize 2 +
-        [(x y) (let ([rx (get-type x)]
-                     [ry (get-type y)])
+        [x* (let ([r* (get-type x*)])
+              (cond
+                [(andmap (lambda (r) (predicate-implies? r real-pred)) r*)
                  (cond
-                   [(predicate-implies? rx flonum-pred)
-                    (cond
-                      [(predicate-implies? ry real-pred)
-                       (values `(call ,preinfo ,(lookup-primref 3 'fl+)
-                                               ,x
-                                               ,(real-exp->flonum-exp y ry))
-                               flonum-pred ntypes #f #f)]
-                      [else
-                       (values `(call ,preinfo ,pr ,x ,y)
-                               ret ntypes #f #f)])]
-                   [(predicate-implies? ry flonum-pred)
-                    (cond
-                      [(predicate-implies? rx real-pred)
-                       (values `(call ,preinfo ,(lookup-primref 3 'fl+)
-                                               ,(real-exp->flonum-exp x rx)
-                                               ,y)
-                               flonum-pred ntypes #f #f)]
-                      [else
-                       (values `(call ,preinfo ,pr ,x ,y)
-                               ret ntypes #f #f)])]
-                   [(and (predicate-implies? rx 'fixnum)
-                         (predicate-implies? ry 'fixnum))
-                    (values `(call ,preinfo ,(lookup-primref 3 '$fxx+) ,x ,y)
+                   [(ormap (lambda (r) (predicate-implies? r flonum-pred)) r*)
+                    (values `(call ,preinfo ,(lookup-primref 3 'fl+)
+                                            ,(map real-exp->flonum-exp x* r*) ...)
+                            flonum-pred ntypes #f #f)]
+                   [(andmap (lambda (r) (predicate-implies? r 'fixnum)) r*)
+                    (values `(call ,preinfo ,(lookup-primref 3 '$fxx+) ,x* ...)
                             'exact-integer ntypes #f #f)]
                    [else
-                    (values `(call ,preinfo ,pr ,x ,y)
-                            ret ntypes #f #f)]))])
+                    (values `(call ,preinfo ,pr ,x* ...)
+                            real-pred ntypes #f #f)])]
+                [else
+                 (values `(call ,preinfo ,pr ,x* ...)
+                         ret ntypes #f #f)]))])
 
       (define-specialize 2 (add1 sub1 1+ 1- -1+)
         [(n) (let ([r (get-type n)])
