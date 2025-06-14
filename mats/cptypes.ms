@@ -1003,6 +1003,7 @@
                      (+ x y)))
     '(lambda (x y) (when (and (number? x) (number? y))
                      (#3%+ x y))))
+  ; in cp0, partial-folder reverses (+ x 1) to (+ 1 x)
   (cptypes-equivalent-expansion?
     '(lambda (x) (when (fixnum? x)
                    (+ 1 x)))
@@ -1014,15 +1015,25 @@
     '(lambda (x) (when (flonum? x)
                    (#3%fl+ 1.0 x))))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (when (flonum? x)
+    '(lambda (x) (when (number? x)
                    (+ 1 x)))
+    '(lambda (x) (when (number? x)
+                   (#3%+ 1 x))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (fixnum? x)
+                   (+ 1 x x)))
+    '(lambda (x) (when (fixnum? x)
+                   (#3%$fxx+ 1 x x))))
+  (cptypes-equivalent-expansion?
     '(lambda (x) (when (flonum? x)
-                   (#3%fl+ 1.0 x))))
+                   (+ 1 x x)))
+    '(lambda (x) (when (flonum? x)
+                   (#3%fl+ 1.0 x x))))
   (cptypes-equivalent-expansion?
     '(lambda (x) (when (number? x)
-                   (+ x 1)))
+                   (+ 1 x x)))
     '(lambda (x) (when (number? x)
-                   (#3%+ x 1))))
+                   (#3%+ 1 x x))))
 )
 
 (mat cptypes-rest-argument

@@ -2214,7 +2214,7 @@
   ($fxu< [flags single-valued pure cp02])
   ($fxvector-ref-check? [sig [(ptr ptr) -> (boolean)]] [flags unrestricted pure])
   ($fxvector-set!-check? [sig [(ptr ptr) -> (boolean)]] [flags unrestricted discard])
-  ($fxx+ [sig [(fixnum fixnum) -> (sint)]] [flags arith-op safeongoodargs])
+  ($fxx+ [sig [(fixnum ...) -> (sint)]] [flags arith-op safeongoodargs])
   ($gc-cpu-time [flags true])
   ($gc-real-time [flags true])
   ($generation [flags single-valued])
