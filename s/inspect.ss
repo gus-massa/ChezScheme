@@ -323,7 +323,7 @@
 (define charschemecode
    (lambda (x)
       (let ([x (format "~s" x)])
-         (format "~a~a" x (spaces (- 11 (string-length x)))))))
+         (format "~a~a" x (spaces (fx- 11 (string-length x)))))))
 
 (define unicodehexcode
   (lambda (x)
@@ -347,7 +347,7 @@
                          (begin
                             (show "~a~a~a"
                                   label
-                                  (spaces (- 6 (string-length label)))
+                                  (spaces (fx- 6 (string-length label)))
                                   (apply string-append (reverse strings)))
                             (loop1 i))
                          (loop2 (+ j 1)
@@ -367,7 +367,7 @@
       (let ([label (format "~a~d. ~a:" line-indent n name)])
          (let ([label (format "~a~a"
                          label
-                         (spaces (- descrip-limit (string-length label))))])
+                         (spaces (fx- descrip-limit (string-length label))))])
             (show "~a~a"
                   label
                   (form x (string-length label) display-line-limit))))))
@@ -377,7 +377,7 @@
       (let ([label (format "~a~a:" line-indent name)])
          (let ([label (format "~a~a"
                          label
-                         (spaces (- descrip-limit (string-length label))))])
+                         (spaces (fx- descrip-limit (string-length label))))])
             (show "~a~a"
                   label
                   (form x (string-length label) display-line-limit))))))
@@ -468,7 +468,7 @@
       (let ([s (if (pair? key) (format "~a(~a)" (car key) (cdr key)) key)])
          (show "   ~a ~a ~a"
                s
-               (make-string (max (- 20 (string-length s)) 0) #\.)
+               (make-string (max (fx- 20 (string-length s)) 0) #\.)
                message))))
 
 (define display-options
@@ -655,7 +655,7 @@
          (fprintf (console-output-port)
                   "~a~a : "
                   obj
-                  (spaces (- prompt-line-limit (string-length obj)))))))
+                  (spaces (fx- prompt-line-limit (string-length obj)))))))
 
 (define outer-reset-handler ($make-thread-parameter values))
 

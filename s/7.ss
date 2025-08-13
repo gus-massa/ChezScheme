@@ -1128,7 +1128,7 @@
     (define pad
       (lambda (s n p)
         (let ([i (string-length s)])
-          (when (> n i) (display (make-string (- n i) #\space) p))
+          (when (> n i) (display (make-string (fx- n i) #\space) p))
           (display s p)
           (max i n))))
     (define numbered-line-display

@@ -6527,7 +6527,7 @@
                                (,%ac0 ,(reg-cons* %ret arg-registers) ...)))))])))]
            [(bytevector=?)
             (let ([bv1 (make-tmp 'bv1)] [bv2 (make-tmp 'bv2)] [idx (make-tmp 'idx)] [len2 (make-tmp 'len2)])
-              (define (argcnt->max-fv n) (max (- n (length arg-registers)) 0))
+              (define (argcnt->max-fv n) (max (fx- n (length arg-registers)) 0))
               (let ([Ltop (make-local-label 'Ltop)] [Ltrue (make-local-label 'Ltrue)] [Lfail (make-local-label 'Lfail)])
                 (define iptr-bytes (in-context Triv (%constant ptr-bytes)))
                 `(lambda ,(make-info "bytevector=?" '(2) #t) ,(argcnt->max-fv 2) (,bv1 ,bv2 ,idx ,len2)
@@ -10163,7 +10163,7 @@
         (lambda (lambda-info varvec unvarvec reg-spillinfo)
           (define total-k (vector-length regvec))
           (define fp-k (length extra-fpregisters))
-          (define ptr-k (- total-k fp-k))
+          (define ptr-k (fx- total-k fp-k))
           (define uvar-weight
             (lambda (x)
               (cond
