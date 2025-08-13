@@ -2989,7 +2989,10 @@
             (cond
               [(nanopass-case (Lsrc Expr) (result-exp val)
                  ; (op obj ident) is not necessarily the same as obj, so return obj
-                 [(quote ,d) (and (guard (c [#t #f]) (op d ident)) d)]
+                 [(quote ,d) (and (display "[" (current-error-port))
+                                  (guard (c [#t #f]) (op d ident))
+                                  (display "]" (current-error-port))
+                                  d)]
                  [else #f]) =>
                (lambda (a)
                  (let loop ([arg* arg*] [a a] [val* '()] [unused (list arg)])

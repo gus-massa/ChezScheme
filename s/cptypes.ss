@@ -1257,6 +1257,8 @@ Notes:
                    [ir (and (andmap predicate-implies-real? r*)
                             (cond
                               [(andmap predicate-implies-fixnum? r*)
+                               (display (list '!!! preinfo) (current-error-port))
+                               (newline (current-error-port))
                                `(call ,preinfo ,(lookup-primref 3 '$fxx-) ,x* ...)]
                               [(or ; check if the first argument is a flonum
                                    (predicate-implies-flonum? (car r*))

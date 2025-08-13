@@ -551,6 +551,9 @@
        [(x1 x2)
         (unless (fixnum? x1) (fxargerr '$fxx- x1))
         (unless (fixnum? x2) (fxargerr '$fxx- x2))
+        (display "*" (current-error-port))
+        (flush-output-port (current-error-port))
+        (sleep (make-time 'time-duration 100000000 0))
         (#3%$fxx- x1 x2)]
        [(x1 x2 x3)
         (unless (fixnum? x1) (fxargerr '$fxx- x1))
