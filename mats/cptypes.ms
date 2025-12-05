@@ -678,9 +678,9 @@
 (mat cptypes-type-implies?
   (test-chain '((lambda (x) (eq? x 0)) fixnum? (lambda (x) (and (integer? x) (exact? x))) real? number?))
   (test-chain* '((lambda (x) (or (eq? x 0) (eq? x 10))) fixnum? (lambda (x) (and (integer? x) (exact? x))) real? number?))
-  (test-chain* '(fixnum? integer? real?))
-  (test-chain* '(fixnum? exact? number?)) ; exact? may raise an error
-  (test-chain* '(bignum? exact? number?)) ; exact? may raise an error
+  (test-chain '(fixnum? integer? real?))
+  (test-chain '(fixnum? exact? number?))
+  (test-chain '(bignum? exact? number?))
   (test-chain '(fixnum? (lambda (x) (and (integer? x) (exact? x))) (lambda (x) (and (number? x) (exact? x))) number?))
   (test-chain '((lambda (x) (eqv? x (expt 256 100))) bignum? integer? real? number?))
   (test-chain '((lambda (x) (eqv? 0.0 x)) flonum? real? number?))
@@ -1109,15 +1109,34 @@
     '(lambda (x) (when (fixnum? x)
                    (#3%fixnum->flonum x))))
   (cptypes-equivalent-expansion?
-    '(lambda (x) (when (integer? x) ; a subset of rational? that is representable
+    '(lambda (x) (when (bignum? x)
+                   (real->flonum x)))
+    '(lambda (x) (when (bignum? x)
+                   (#3%$real->flonum 'real->flonum x))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (and (ineger? x) (exact? x))
+                   (real->flonum x)))
+    '(lambda (x) (when (and (ineger? x) (exact? x))
+                   (if (#2%fixnum? x) ;the specialization uses #2%fixnum?
+                       (#3%fixnum->flonum x)
+                       (#3%$real->flonum 'real->flonum x)))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (or (zero? x) (integer? x)) ; a subset of complex-rational? that is representable
                    (exact x)))
-    '(lambda (x) (when (integer? x)
+    '(lambda (x) (when (or (zero? x) (integer? x))
                    (#3%exact x))))
   (cptypes-equivalent-expansion?
     '(lambda (x) (when (exact? x)
                    (exact x)))
     '(lambda (x) (when (exact? x)
                    x)))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (real? x)
+                   (exact x)))
+    '(lambda (x) (when (real? x)
+                   (if (#2%flonum? x) ;the specialization uses #2%fixnum?
+                       (exact x)
+                       x))))
   (cptypes-equivalent-expansion?
     '(lambda (x) (when (zero? x)
                    (exact x)))
