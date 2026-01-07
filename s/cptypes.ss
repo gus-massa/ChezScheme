@@ -1089,6 +1089,7 @@ Notes:
         (define-specialize/fxfl 2 (>= r6rs:>=) fx>= fl>=)
         (define-specialize/fxfl 2 min fxmin flmin)
         (define-specialize/fxfl 2 max fxmax flmax)
+        (define-specialize/fxfl 2 even? fxeven? fleven?)
       )
 
       (let ()

@@ -466,6 +466,12 @@
   (cptypes/once-equivalent-expansion?
     '(lambda (x y) (when (and (flonum? x) (flonum? y)) (flonum? (max x y))))
     '(lambda (x y) (when (and (flonum? x) (flonum? y)) (#3%flmax x y) #t)))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (fixnum? x) (even? x)))
+    '(lambda (x) (when (fixnum? x) (#3%fxeven? x))))
+  (cptypes-equivalent-expansion?
+    '(lambda (x) (when (flonum? x) (even? x)))
+    '(lambda (x) (when (flonum? x) (#3%fleven? x))))
 )
 
 (mat cptype-directly-applied-case-lambda

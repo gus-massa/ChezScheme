@@ -205,7 +205,7 @@
   (positive? [sig [(real) -> (boolean)]] [flags pure mifoldable discard safeongoodargs ieee r5rs])
   (negative? [sig [(real) -> (boolean)]] [flags pure mifoldable discard safeongoodargs ieee r5rs])
   (odd? [sig [(integer) -> (boolean)]] [flags pure mifoldable discard safeongoodargs ieee r5rs])
-  (even? [sig [(integer) -> (boolean)]] [flags pure mifoldable discard safeongoodargs ieee r5rs])
+  (even? [sig [(integer) -> (boolean)]] [flags pure mifoldable discard safeongoodargs ieee r5rs cptypes2])
   (finite? [sig [(real) -> (boolean)]] [pred rational] [flags pure mifoldable discard safeongoodargs cptypes2])
   (infinite? [sig [(real) -> (boolean)]] [pred infinite] [flags pure mifoldable discard safeongoodargs cptypes2])
   (nan? [sig [(real) -> (boolean)]] [pred nan] [flags pure mifoldable discard safeongoodargs cptypes2])
