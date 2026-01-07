@@ -119,7 +119,8 @@ Online versions of both books can be found at
 
 \subsection{Type recovery improvements (10.5.0???)}
 
-The type recovery pass has partial support for \scheme{quotient}. [WIP]
+The type recovery pass has partial support for \scheme{quotient}
+and \scheme{remainder}. [WIP]
 
 \subsection{Add machine type a6gnu (10.4.0)}
 

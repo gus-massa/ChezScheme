@@ -2223,3 +2223,30 @@
         '(lambda (x) (if (fixnum? x) (#2%fxquotient x -1)))
         '(lambda (x) (if (fixnum? x) (#3%fxquotient x -1)))))
 )
+
+(mat cptypes-remainder
+  (cptypes-equivalent-expansion?
+   '(lambda (x) (if (fixnum? x) (remainder x 2)))
+   '(lambda (x) (if (fixnum? x) (#3%fxremainder x 2))))
+  (cptypes-equivalent-expansion?
+   '(lambda (x) (if (fixnum? x) (remainder x 3)))
+   '(lambda (x) (if (fixnum? x) (#3%fxremainder x 3))))
+  (not (cptypes-equivalent-expansion?
+        '(lambda (x) (if (fixnum? x) (remainder x 0)))
+        '(lambda (x) (if (fixnum? x) (#3%fxremainder x 0)))))
+  (cptypes-equivalent-expansion?
+   '(lambda (x) (if (fixnum? x) (remainder x -1)))
+   '(lambda (x) (if (fixnum? x) (#3%fxremainder x -1))))
+  (cptypes-equivalent-expansion?
+   '(lambda (x) (if (fixnum? x) (fxremainder x 2)))
+   '(lambda (x) (if (fixnum? x) (#3%fxremainder x 2))))
+  (cptypes-equivalent-expansion?
+   '(lambda (x) (if (fixnum? x) (fxremainder x 3)))
+   '(lambda (x) (if (fixnum? x) (#3%fxremainder x 3))))
+  (not (cptypes-equivalent-expansion?
+        '(lambda (x) (if (fixnum? x) (#2%fxremainder x 0)))
+        '(lambda (x) (if (fixnum? x) (#3%fxremainder x 0)))))
+  (cptypes-equivalent-expansion?
+   '(lambda (x) (if (fixnum? x) (#2%fxremainder x -1)))
+   '(lambda (x) (if (fixnum? x) (#3%fxremainder x -1))))
+)

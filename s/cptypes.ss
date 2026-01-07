@@ -1377,6 +1377,15 @@ Notes:
                    (values `(call ,preinfo ,(lookup-primref 3 'fxquotient) ,x ,y)
                            fixnum-pred ntypes #f #f)))])
 
+      (define-specialize 2 (remainder fxremainder)
+        [(x y) (let ([rx (get-type x)]
+                     [ry (get-type y)])
+                 (when (and (predicate-implies? rx fixnum-pred)
+                            (check-constant-is? ry (lambda (x) (and (fixnum? x)
+                                                                    (not (fx= x 0))))))
+                   (values `(call ,preinfo ,(lookup-primref 3 'fxremainder) ,x ,y)
+                           fixnum-pred ntypes #f #f)))])
+
       (let ()
         (define-syntax define-specialize/fl
           (syntax-rules ()
