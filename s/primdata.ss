@@ -731,7 +731,7 @@
 (define-symbol-flags* ([libraries (rnrs r5rs)] [flags primitive proc])
   (exact->inexact [sig [(number) -> (inexact-number)]] [flags arith-op mifoldable discard safeongoodargs ieee r5rs cptypes2])
   (inexact->exact [sig [(number) -> (exact-number)]] [flags arith-op mifoldable discard ieee r5rs cptypes2]) ; no safeongoodargs because it fails with +inf.0
-  (quotient [sig [(integer integer) -> (number)]] [flags arith-op mifoldable discard ieee r5rs])
+  (quotient [sig [(integer integer) -> (number)]] [flags arith-op mifoldable discard ieee r5rs cptypes2])
   (remainder [sig [(integer integer) -> (number)]] [flags arith-op mifoldable discard ieee r5rs])
   (modulo [sig [(integer integer) -> (number)]] [flags arith-op mifoldable discard ieee r5rs])
   (force [sig [(procedure) -> (ptr)]] [flags r5rs])
@@ -1424,7 +1424,7 @@
   (fxpopcount [sig [(sub-fixnum) -> (fixnum)]] [flags arith-op cp02 safeongoodargs])
   (fxpopcount32 [sig [(sub-fixnum) -> (fixnum)]] [flags arith-op cp02 safeongoodargs])
   (fxpopcount16 [sig [(sub-fixnum) -> (fixnum)]] [flags arith-op cp02 safeongoodargs])
-  (fxquotient [sig [(fixnum fixnum ...) -> (fixnum)]] [flags arith-op partial-folder])
+  (fxquotient [sig [(fixnum fixnum ...) -> (fixnum)]] [flags arith-op partial-folder cptypes2])
   (fxremainder [sig [(fixnum fixnum) -> (fixnum)]] [flags arith-op cp02])
   (fxsll [sig [(fixnum sub-ufixnum) -> (fixnum)]] [flags arith-op cp02])
   (fxsll/wraparound [sig [(fixnum sub-ufixnum) -> (fixnum)]] [flags arith-op cp02])

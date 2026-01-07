@@ -1367,6 +1367,16 @@ Notes:
                   (values `(call ,preinfo ,(lookup-primref 3 'flabs) ,n)
                           flonum-pred ntypes #f #f)]))])
 
+      (define-specialize 2 (quotient fxquotient)
+        [(x y) (let ([rx (get-type x)]
+                     [ry (get-type y)])
+                 (when (and (predicate-implies? rx fixnum-pred)
+                            (check-constant-is? ry (lambda (x) (and (fixnum? x)
+                                                                    (not (fx= x 0))
+                                                                    (not (fx= x -1))))))
+                   (values `(call ,preinfo ,(lookup-primref 3 'fxquotient) ,x ,y)
+                           fixnum-pred ntypes #f #f)))])
+
       (let ()
         (define-syntax define-specialize/fl
           (syntax-rules ()

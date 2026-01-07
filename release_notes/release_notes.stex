@@ -117,6 +117,10 @@ Online versions of both books can be found at
 %-----------------------------------------------------------------------------
 \section{Functionality Changes}\label{section:functionality}
 
+\subsection{Type recovery improvements (10.5.0???)}
+
+The type recovery pass has partial support for \scheme{quotient}. [WIP]
+
 \subsection{Add machine type a6gnu (10.4.0)}
 
 GNU/Hurd on x86\_64 is now supported as machine type a6gnu.

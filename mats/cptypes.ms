@@ -2196,3 +2196,30 @@
   (equivalent-expansion? #vfl(+nan.0) #vfl(+nan.0))
   (not (equivalent-expansion? #vfl(0.0) #vfl(-0.0)))
 )
+
+(mat cptypes-quotient
+  (cptypes-equivalent-expansion?
+   '(lambda (x) (if (fixnum? x) (quotient x 2)))
+   '(lambda (x) (if (fixnum? x) (#3%fxquotient x 2))))
+  (cptypes-equivalent-expansion?
+   '(lambda (x) (if (fixnum? x) (quotient x 3)))
+   '(lambda (x) (if (fixnum? x) (#3%fxquotient x 3))))
+  (not (cptypes-equivalent-expansion?
+        '(lambda (x) (if (fixnum? x) (quotient x 0)))
+        '(lambda (x) (if (fixnum? x) (#3%fxquotient x 0)))))
+  (not (cptypes-equivalent-expansion?
+        '(lambda (x) (if (fixnum? x) (quotient x -1)))
+        '(lambda (x) (if (fixnum? x) (#3%fxquotient x -1)))))
+  (cptypes-equivalent-expansion?
+   '(lambda (x) (if (fixnum? x) (fxquotient x 2)))
+   '(lambda (x) (if (fixnum? x) (#3%fxquotient x 2))))
+  (cptypes-equivalent-expansion?
+   '(lambda (x) (if (fixnum? x) (fxquotient x 3)))
+   '(lambda (x) (if (fixnum? x) (#3%fxquotient x 3))))
+  (not (cptypes-equivalent-expansion?
+        '(lambda (x) (if (fixnum? x) (#2%fxquotient x 0)))
+        '(lambda (x) (if (fixnum? x) (#3%fxquotient x 0)))))
+  (not (cptypes-equivalent-expansion?
+        '(lambda (x) (if (fixnum? x) (#2%fxquotient x -1)))
+        '(lambda (x) (if (fixnum? x) (#3%fxquotient x -1)))))
+)
