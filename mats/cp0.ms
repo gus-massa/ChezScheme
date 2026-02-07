@@ -724,8 +724,8 @@
   (test-cp0-expansion
     '(apply fx+ 3 x 4 '(5 7 9.0))
     (if (eqv? (optimize-level) 3)
-        '(#3%fx+ 19 x 9.0)
-        '(#2%fx+ 19 x 9.0)))
+        '(#3%$app/no-return #3%fx+ 19 x 9.0)
+        '(#3%$app/no-return #2%fx+ 19 x 9.0)))
   (test-cp0-expansion
     `(apply apply '(,list 2 3 (4 5 6)))
     `(',list 2 3 4 5 6))
