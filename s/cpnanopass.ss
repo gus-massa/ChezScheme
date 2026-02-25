@@ -2747,25 +2747,6 @@
                      ir)))]))
       (set! $loop-unroll-limit loop-unroll-limit))
 
-    (define (known-flonum-result? e)
-      (let flonum-result? ([e e] [fuel 10])
-        (and
-         (fx> fuel 0)
-         (nanopass-case (L7 Expr) e
-           [,x (and (uvar? x) (eq? (uvar-type x) 'fp))]
-           [(quote ,d) (flonum? d)]
-           [(call ,info ,mdcl ,pr ,e* ...)
-            (or (eq? 'flonum ($sgetprop (primref-name pr) '*result-type* #f))
-                (and (eq? '$object-ref (primref-name pr))
-                     (pair? e*)
-                     (nanopass-case (L7 Expr) (car e*)
-                       [(quote ,d) (eq? d 'double)])))]
-           [(seq ,e0 ,e1) (flonum-result? e1 (fx- fuel 1))]
-           [(let ([,x* ,e*] ...) ,body) (flonum-result? body (fx- fuel 1))]
-           [(if ,e1 ,e2 ,e3) (and (flonum-result? e2 (fxsrl fuel 1))
-                                  (flonum-result? e3 (fxsrl fuel 1)))]
-           [else #f]))))
-
     (define-pass np-unbox-fp-vars! : L7 (ir) -> L7 ()
       (definitions
         (define unify-boxed!

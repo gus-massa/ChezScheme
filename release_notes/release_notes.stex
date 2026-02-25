@@ -117,6 +117,12 @@ Online versions of both books can be found at
 %-----------------------------------------------------------------------------
 \section{Functionality Changes}\label{section:functionality}
 
+\subsection{Remove more occurences \scheme{fx+} and \scheme{fx*} (10.4.0)}
+
+The source optimizer (cp0) removes more ocurrences \scheme{fx+} and \scheme{fx*}
+when it's clear that the argument is a flonum and it is not necesary to keep the
+wrapper as a hint for the unboxing phase.
+
 \subsection{Unicode 17.0.0 support (10.4.0)}
 
 The character sets, character classes, and word-breaking algorithms for character, string,

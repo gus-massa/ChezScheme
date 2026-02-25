@@ -3036,20 +3036,34 @@
                  [(arg1 arg2)
                   (partial-fold-minus 3 arg1 (list arg2) ctxt 'prim prim generic-op ident)]))]))
 
-        (define obviously-fl?
+        (define (known-flonum-result? e)
           ;; We keep single-argument `fl+` and `fl*` as an unboxing hint to the back end,
           ;; but the hint is not necessary if the argument is the result of a primitive that
           ;; produces fonums
-          (lambda (e)
-            (nanopass-case (Lsrc Expr) e
-              [(quote ,d) (flonum? d)]
-              [(call ,preinfo ,pr ,e* ...) (eq? 'flonum ($sgetprop (primref-name pr) '*result-type* #f))]
+          (let flonum-result? ([e e] [fuel 10])
+            (and
+             (fx> fuel 0)
+             (nanopass-case (Lsrc Expr) e
+               [(quote ,d) (flonum? d)]
+               [(call ,preinfo ,pr ,e* ...)
+                (guard (eq? '$object-ref (primref-name pr)))
+                (and (pair? e*)
+                     (nanopass-case (Lsrc Expr) (car e*)
+                       [(quote ,d) (eq? d 'double)]
+                       [else #f]))]
+               [(call ,preinfo ,pr ,e* ...)
+                (eq? 'flonum ($sgetprop (primref-name pr) '*result-type* #f))]
+               [(call ,preinfo0 (case-lambda ,preinfo1 (clause (,x* ...) ,interface ,body)) ,e* ...)
+                (flonum-result? body (fx- fuel 1))]
               [(call ,preinfo (foreign (,conv* ...) ,name ,e (,arg-type* ...) ,result-type) ,e* ...)
                (nanopass-case (Ltype Type) result-type
                  [(fp-double-float) #t]
                  [(fp-single-float) #t]
                  [else #f])]
-              [else #f])))
+               [(seq ,e0 ,e1) (flonum-result? e1 (fx- fuel 1))]
+               [(if ,e1 ,e2 ,e3) (and (flonum-result? e2 (fxsrl fuel 1))
+                                      (flonum-result? e3 (fxsrl fuel 1)))]
+               [else #f]))))
 
         ; handling nans here using the support for handling exact zero in
         ; the multiply case.  maybe shouldn't bother with nans anyway.
@@ -3058,14 +3072,14 @@
         (partial-folder plus $fxx+ + 0 (lambda (x) #f))
         (r6rs-fixnum-partial-folder plus r6rs:fx+ fx+ + 0 (lambda (x) #f) 3)
         (r6rs-fixnum-partial-folder plus fx+/wraparound fx+/wraparound + 0 (lambda (x) #f) 3)
-        (partial-folder plus fl+ fl+ -0.0 fl-nan? #f obviously-fl?)
+        (partial-folder plus fl+ fl+ -0.0 fl-nan? #f known-flonum-result?)
         (partial-folder plus cfl+ cfl+ -0.0 cfl-nan?)
 
         (partial-folder plus * * 1 exact-zero?)   ; exact zero trumps nan
         (partial-folder plus fx* * 1 exact-zero? 3)
         (r6rs-fixnum-partial-folder plus r6rs:fx* fx* * 1 exact-zero? 3)
         (r6rs-fixnum-partial-folder plus fx*/wraparound fx*/wraparound * 1 (lambda (x) #f) 3)
-        (partial-folder plus fl* fl* 1.0 fl-nan? #f obviously-fl?)
+        (partial-folder plus fl* fl* 1.0 fl-nan? #f known-flonum-result?)
         (partial-folder plus cfl* cfl* 1.0 cfl-nan?)
 
         ; not handling nans here since we don't have support for the exact
